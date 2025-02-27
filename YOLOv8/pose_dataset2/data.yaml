@@ -1,0 +1,18 @@
+#data.yaml
+
+path: /content/drive/MyDrive/BodyOracle_Yolo/pose_dataset2
+train: images/train
+val: images/valid
+test: images/test
+
+kpt_shape: [17, 3]  # 17 keypoints, each with (x, y, visibility)
+flip_idx: [0, 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15]
+
+names:
+    0: pose1_righthigh
+    1: pose2_da
+    2: pose3_yeah
+    3: pose4_twohands
+    4: pose5_waist
+    5: pose6_stand
+    6: pose7_raisetwohands
