@@ -525,7 +525,7 @@ MonoBehaviour:
       m_Calls: []
   m_Sprite: {fileID: -1491715572, guid: 7f55d4bd4898c4042b9e31c08eacfab0, type: 3}
   m_Type: 0
-  m_PreserveAspect: 0
+  m_PreserveAspect: 1
   m_FillCenter: 1
   m_FillMethod: 4
   m_FillAmount: 1
@@ -750,6 +750,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e47a9d1fe147447d7a76cdf51916f456, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  arCameraManager: {fileID: 0}
   modelAsset: {fileID: 5022602860645237092, guid: 4b40fe0d41aee447fa6a316080485662, type: 3}
 --- !u!1 &451198451
 GameObject:
