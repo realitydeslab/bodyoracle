@@ -6,9 +6,12 @@ using UnityEngine.UI;
 using System.Collections;
 using System;
 using UnityEngine.XR.ARSubsystems;
+using HoloKit;
 
 public class Yolo : MonoBehaviour
 {
+    public HoloKitCameraManager m_HoloKitCameraManager;
+    public GameObject CenterEyePose;
     [SerializeField] private ARCameraManager arCameraManager;
     [SerializeField] private ModelAsset modelAsset;
     private Model runtimeModel;
@@ -27,7 +30,6 @@ public class Yolo : MonoBehaviour
     [SerializeField] private float confidenceThreshold = 0.5f;
     
     // 虚拟投影平面参数
-    [SerializeField] private float projectionPlaneDistance = 9.0f; // 投影平面距离相机的距离（米）
     [SerializeField] private float projectionPlaneWidth =  2.8f;    // 投影平面的宽度（米）
     [SerializeField] private Vector2 projectionPlaneOffset = Vector2.zero; // 投影平面偏移（米）
     
@@ -269,7 +271,7 @@ public class Yolo : MonoBehaviour
             float croppedCenterY = (640 - transposedData[baseIndex - 3]);
             float width = transposedData[baseIndex - 2];
             float height = transposedData[baseIndex - 1];
-            Debug.Log($"BBox in YOLO: X: {croppedCenterX}, Y: {croppedCenterY}, width: {width}, height: {height}");
+            // Debug.Log($"BBox in YOLO: X: {croppedCenterX}, Y: {croppedCenterY}, width: {width}, height: {height}");
 
             float bboxX = croppedCenterX - width / 2;
             float bboxY = croppedCenterY - height / 2;
@@ -472,29 +474,9 @@ public class Yolo : MonoBehaviour
         return latestDetections;
     }
 
-    // 将图像坐标映射到虚拟投影平面上的世界坐标
-    private Vector3 MapToProjectionPlane(float imageX, float imageY)
+    // 将图像坐标映射到虚拟投影平面上的相对位置
+    private Vector2 MapToProjectionPlane(float imageX, float imageY)
     {
-        Camera mainCamera = null;
-        
-        // 优先使用AR相机
-        if (useARCamera && arCameraManager != null)
-        {
-            mainCamera = arCameraManager.GetComponent<Camera>();
-        }
-        
-        // 如果AR相机不可用，则使用主相机
-        if (mainCamera == null)
-        {
-            mainCamera = Camera.main;
-        }
-        
-        if (mainCamera == null)
-        {
-            Debug.LogError("无法获取相机引用，无法计算投影平面位置");
-            return Vector3.zero;
-        }
-            
         // 将图像坐标归一化到[-1,1]范围
         // 注意：输入的imageX和imageY是像素坐标，范围为[0,640]
         float normalizedX = (imageX / 640.0f) * 2 - 1;
@@ -504,21 +486,8 @@ public class Yolo : MonoBehaviour
         float planeX = normalizedX * (projectionPlaneWidth / 2.0f) + projectionPlaneOffset.x;
         float planeY = normalizedY * (projectionPlaneWidth / 2.0f) + projectionPlaneOffset.y;
         
-        // 获取相机的变换信息
-        Transform cameraTransform = mainCamera.transform;
-        
-        // 创建相对于相机的本地偏移
-        Vector3 localOffset = new Vector3(
-            planeX,
-            planeY,
-            projectionPlaneDistance
-        );
-        
-        // 将本地偏移转换为世界空间位置
-        Vector3 worldPosition = cameraTransform.position + 
-                               cameraTransform.TransformDirection(localOffset);
-        
-        return worldPosition;
+        // 返回相对于相机的偏移位置（不再转换为世界坐标）
+        return new Vector2(planeX, planeY);
     }
     
     // 计算投影平面上的宽度

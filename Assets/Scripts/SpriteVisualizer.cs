@@ -6,14 +6,22 @@ using UnityEngine.XR.ARFoundation;
 using UnityEngine.UI;
 using UnityEngine.XR.ARSubsystems;
 using System.Linq;
+using HoloKit;
+using UnityEngine.Animations;
 
 public class SpriteVisualizer : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private Yolo yoloDetector;
-    [SerializeField] private ARCameraManager arCameraManager; // 添加ARCameraManager引用
-    [SerializeField] private ARSession arSession; // AR会话引用
-    private Camera arCamera; // 存储AR相机引用
+    public HoloKitCameraManager m_HoloKitCameraManager;
+    
+    // Parent Constraint相关引用
+    [SerializeField] private GameObject characterFrame;
+    [SerializeField] private GameObject textNote;
+    [SerializeField] private GameObject soundSymbol;
+    [SerializeField] private Transform mainCameraTransform;
+    [SerializeField] private Transform centerEyePoseTransform;
+    private bool lastRenderModeMono = true; // 用于跟踪上一次的渲染模式
     
     [Header("Class Sprites")]
     [SerializeField] private Sprite[] classSprites; // 每个类别对应的Sprite
@@ -25,35 +33,12 @@ public class SpriteVisualizer : MonoBehaviour
     
     [Header("Sound Sprite Settings")]
     [SerializeField] private GameObject soundSpriteObject; // 声音Sprite对象
-    [SerializeField] private Vector3 soundSpritePosition = new Vector3(0, 0, 2.0f); // 相对于相机的位置
-    [SerializeField] private Vector3 soundSpriteScale = new Vector3(0.5f, 0.5f, 0.5f); // 缩放
     [SerializeField] private Button triggerButton; // 触发按钮
     
     [Header("Visualization Settings")]
     [SerializeField] private bool showDebugInfo = false; // 是否显示调试信息
     [SerializeField] private Material spriteMaterial; // Sprite使用的材质
-    
-    [Header("Fixed Objects")]
-    [SerializeField] private GameObject fixedSprite; // 固定位置的Sprite对象
-    [SerializeField] private GameObject fixedText; // 固定位置的TextMeshPro对象
-    [SerializeField] private Vector3 fixedSpritePosition = new Vector3(0, 0, 2.5f); // 相对于相机的位置
-    [SerializeField] private Vector3 fixedSpriteScale = new Vector3(0.32f, 0.32f, 0.32f); // 缩放
-    [SerializeField] private Vector3 fixedTextPosition = new Vector3(0, -1.2f, 2.5f); // 相对于相机的位置
-    [SerializeField] private Vector3 fixedTextScale = new Vector3(0.3f, 0.3f, 0.3f); // 缩放
-    
-    [Header("Rotation Settings")]
-    [SerializeField] private float rotationSmoothTime = 0.1f; // 旋转平滑时间
-    [SerializeField] private float rotationThreshold = 0.5f; // 旋转更新阈值（度）
-    [SerializeField] private int rotationUpdateInterval = 2; // 每隔多少帧更新一次旋转
-    
-    // 存储上一帧的相机旋转
-    private Quaternion lastCameraRotation;
-    
-    // 用于平滑旋转
-    private Vector3 rotationVelocity;
-    
-    // 帧计数器，用于控制旋转更新频率
-    private int frameCounter = 0;
+    [SerializeField] private float projectionPlaneDistance = 9.0f; // 投影平面距离相机的距离（米）
     
     // 音频播放器
     private AudioSource audioSource;
@@ -69,14 +54,6 @@ public class SpriteVisualizer : MonoBehaviour
     // 当前活跃的检测结果
     private Dictionary<int, DetectionData.PoseDetection> activeDetections = new Dictionary<int, DetectionData.PoseDetection>();
     
-    [Header("AR Session Settings")]
-    [SerializeField] private bool handleARSessionReset = true; // 是否处理AR会话重置
-    [SerializeField] private float sessionResetDelay = 0.5f; // AR会话重置后的延迟时间（秒）
-    
-    // AR会话状态
-    private bool isARSessionTracking = true;
-    private Coroutine sessionResetCoroutine;
-    
     void Start()
     {
         if (yoloDetector == null)
@@ -88,62 +65,6 @@ public class SpriteVisualizer : MonoBehaviour
                 enabled = false;
                 return;
             }
-        }
-        
-        // 查找ARCameraManager
-        if (arCameraManager == null)
-        {
-            arCameraManager = FindAnyObjectByType<ARCameraManager>();
-            if (arCameraManager == null)
-            {
-                Debug.LogWarning("ARCameraManager not found, falling back to Camera.main");
-                arCamera = Camera.main;
-            }
-            else
-            {
-                arCamera = arCameraManager.GetComponent<Camera>();
-                if (arCamera == null)
-                {
-                    Debug.LogWarning("Camera component not found on ARCameraManager, falling back to Camera.main");
-                    arCamera = Camera.main;
-                }
-            }
-        }
-        else
-        {
-            arCamera = arCameraManager.GetComponent<Camera>();
-            if (arCamera == null)
-            {
-                arCamera = Camera.main;
-            }
-        }
-        
-        // 查找ARSession
-        if (arSession == null && handleARSessionReset)
-        {
-            arSession = FindAnyObjectByType<ARSession>();
-            if (arSession == null)
-            {
-                Debug.LogWarning("ARSession not found, AR session reset handling will be disabled");
-                handleARSessionReset = false;
-            }
-        }
-        
-        // 订阅AR会话状态变化事件
-        if (handleARSessionReset && arSession != null)
-        {
-            ARSession.stateChanged += OnARSessionStateChanged;
-        }
-        
-        // 验证相机引用
-        if (arCamera == null)
-        {
-            Debug.LogError("Failed to find any camera reference. Fixed objects will not work correctly.");
-        }
-        else
-        {
-            // 初始化上一帧的相机旋转
-            lastCameraRotation = arCamera.transform.rotation;
         }
         
         // 验证类别Sprite数组
@@ -170,29 +91,6 @@ public class SpriteVisualizer : MonoBehaviour
             spriteMaterial = new Material(Shader.Find("Sprites/Default"));
         }
         
-        // 验证固定位置的对象
-        if (fixedSprite == null)
-        {
-            Debug.LogWarning("Fixed sprite object is not assigned.");
-        }
-        
-        if (fixedText == null)
-        {
-            Debug.LogWarning("Fixed text object is not assigned.");
-        }
-        
-        // 验证声音Sprite对象
-        if (soundSpriteObject == null)
-        {
-            Debug.LogWarning("Sound sprite object is not assigned. Creating a new one.");
-            soundSpriteObject = new GameObject("SoundSprite");
-            SpriteRenderer renderer = soundSpriteObject.AddComponent<SpriteRenderer>();
-            renderer.material = spriteMaterial;
-            renderer.sortingOrder = 200; // 确保在最前面显示
-            soundSpriteObject.transform.SetParent(transform);
-            soundSpriteObject.SetActive(false);
-        }
-        
         // 添加音频源
         audioSource = gameObject.AddComponent<AudioSource>();
         audioSource.playOnAwake = false;
@@ -209,213 +107,33 @@ public class SpriteVisualizer : MonoBehaviour
         
         // 订阅检测事件
         yoloDetector.OnDetectionsUpdated += UpdateVisualizations;
+        
+        // 初始化Parent Constraint相关引用        
+        if (characterFrame == null || textNote == null || soundSymbol == null)
+        {
+            Debug.LogWarning("无法找到CharacterFrame, TextNote或SoundSymbol对象");
+            characterFrame = GameObject.Find("CharacterFrame");
+            textNote = GameObject.Find("TextNote");
+            soundSymbol = GameObject.Find("SoundSymbol");
+        }
+
+        if (mainCameraTransform == null || centerEyePoseTransform == null)
+        {
+            Debug.LogWarning("无法找到Main Camera或Center Eye Pose对象");
+            GameObject mainCamera = GameObject.Find("Main Camera");
+            GameObject centerEyePose = GameObject.Find("Center Eye Pose");
+            mainCameraTransform = mainCamera.transform;
+            centerEyePoseTransform = centerEyePose.transform;
+        }
     }
     
     void Update()
     {
-        // 增加帧计数器
-        frameCounter++;
-        
-        // 只有在AR会话跟踪状态下才更新对象
-        if (!handleARSessionReset || isARSessionTracking)
-        {
-            // 更新固定位置的对象
-            UpdateFixedObjects();
-            
-            // 更新声音Sprite对象
-            UpdateSoundSpriteObject();
-        }
-        
-        // 检查音频播放状态（无论AR会话状态如何）
+        // 检查音频播放状态
         CheckAudioPlaybackStatus();
-    }
-    
-    // 更新固定位置的对象
-    private void UpdateFixedObjects()
-    {
-        // 确保我们有有效的相机引用
-        if (arCamera == null)
-        {
-            // 尝试重新获取相机引用
-            if (arCameraManager != null)
-            {
-                arCamera = arCameraManager.GetComponent<Camera>();
-            }
-            
-            if (arCamera == null)
-            {
-                arCamera = Camera.main;
-            }
-            
-            if (arCamera == null)
-            {
-                Debug.LogError("无法获取有效的相机引用，无法更新固定对象");
-                return; // 仍然没有有效的相机引用，退出
-            }
-        }
         
-        // 获取相机的变换信息
-        Transform cameraTransform = arCamera.transform;
-        
-        // 检查相机旋转是否发生了足够大的变化，或者是否到了旋转更新间隔
-        float rotationDifference = Quaternion.Angle(lastCameraRotation, cameraTransform.rotation);
-        bool shouldUpdateRotation = rotationDifference > rotationThreshold || (frameCounter % rotationUpdateInterval == 0);
-        
-        // 更新固定Sprite的位置和旋转
-        if (fixedSprite != null)
-        {
-            try
-            {
-                // 使用相对位置计算世界空间中的位置
-                // 注意：这里不使用transform.forward等，而是直接使用矩阵变换
-                Vector3 localOffset = new Vector3(
-                    fixedSpritePosition.x,
-                    fixedSpritePosition.y,
-                    fixedSpritePosition.z
-                );
-                
-                // 将本地偏移转换为世界空间偏移
-                Vector3 worldPosition = cameraTransform.position + 
-                                       cameraTransform.TransformDirection(localOffset);
-                
-                // 设置位置
-                fixedSprite.transform.position = worldPosition;
-                
-                // 只有当旋转变化足够大时才更新旋转
-                if (shouldUpdateRotation)
-                {
-                    // 使用平滑旋转
-                    Quaternion targetRotation = cameraTransform.rotation;
-                    fixedSprite.transform.rotation = Quaternion.Slerp(
-                        fixedSprite.transform.rotation,
-                        targetRotation,
-                        Time.deltaTime / rotationSmoothTime
-                    );
-                }
-                
-                // 设置缩放
-                fixedSprite.transform.localScale = fixedSpriteScale;
-                
-                // if (showDebugInfo)
-                // {
-                    // Debug.Log($"相机位置: {cameraTransform.position}, 固定Sprite位置: {worldPosition}, 旋转差异: {rotationDifference}度");
-                // }
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogError($"更新固定Sprite时出错: {e.Message}");
-            }
-        }
-        
-        // 更新固定文本的位置和旋转
-        if (fixedText != null)
-        {
-            try
-            {
-                // 使用相对位置计算世界空间中的位置
-                Vector3 localOffset = new Vector3(
-                    fixedTextPosition.x,
-                    fixedTextPosition.y,
-                    fixedTextPosition.z
-                );
-                
-                // 将本地偏移转换为世界空间偏移
-                Vector3 worldPosition = cameraTransform.position + 
-                                       cameraTransform.TransformDirection(localOffset);
-                
-                // 设置位置
-                fixedText.transform.position = worldPosition;
-                
-                // 只有当旋转变化足够大时才更新旋转
-                if (shouldUpdateRotation)
-                {
-                    // 使用平滑旋转
-                    Quaternion targetRotation = cameraTransform.rotation;
-                    fixedText.transform.rotation = Quaternion.Slerp(
-                        fixedText.transform.rotation,
-                        targetRotation,
-                        Time.deltaTime / rotationSmoothTime
-                    );
-                }
-                
-                // 设置缩放
-                fixedText.transform.localScale = fixedTextScale;
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogError($"更新固定文本时出错: {e.Message}");
-            }
-        }
-        
-        // 如果旋转发生了足够大的变化，更新上一帧的相机旋转
-        if (shouldUpdateRotation)
-        {
-            lastCameraRotation = cameraTransform.rotation;
-        }
-    }
-    
-    // 更新声音Sprite对象
-    private void UpdateSoundSpriteObject()
-    {
-        if (soundSpriteObject == null || arCamera == null)
-            return;
-        
-        // 获取相机的变换信息
-        Transform cameraTransform = arCamera.transform;
-        
-        // 检查相机旋转是否发生了足够大的变化，或者是否到了旋转更新间隔
-        float rotationDifference = Quaternion.Angle(lastCameraRotation, cameraTransform.rotation);
-        bool shouldUpdateRotation = rotationDifference > rotationThreshold || (frameCounter % rotationUpdateInterval == 0);
-
-        // 只有在显示声音Sprite时才更新位置和旋转
-        if (soundSpriteObject.activeSelf)
-        {
-            try
-            {
-                // 使用相对位置计算世界空间中的位置
-                Vector3 localOffset = new Vector3(
-                    soundSpritePosition.x,
-                    soundSpritePosition.y,
-                    soundSpritePosition.z
-                );
-                
-                // 将本地偏移转换为世界空间偏移
-                Vector3 worldPosition = cameraTransform.position + 
-                                       cameraTransform.TransformDirection(localOffset);
-                
-                // 设置位置
-                soundSpriteObject.transform.position = worldPosition;
-                
-                // 只有当旋转变化足够大时才更新旋转
-                if (shouldUpdateRotation)
-                {
-                    // 使用平滑旋转
-                    Quaternion targetRotation = cameraTransform.rotation;
-                    soundSpriteObject.transform.rotation = Quaternion.Slerp(
-                        soundSpriteObject.transform.rotation,
-                        targetRotation,
-                        Time.deltaTime / rotationSmoothTime
-                    );
-                }
-                
-                // 设置缩放
-                soundSpriteObject.transform.localScale = soundSpriteScale;
-                
-                // if (showDebugInfo)
-                // {
-                //     Debug.Log($"声音Sprite位置: {worldPosition}, 旋转差异: {rotationDifference}度");
-                // }
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogError($"更新声音Sprite时出错: {e.Message}");
-            }
-        }
-        
-        if (shouldUpdateRotation)
-        {
-            lastCameraRotation = cameraTransform.rotation;
-        }
+        // 根据渲染模式切换Parent Constraint的source
+        UpdateParentConstraints();
     }
     
     // 检查音频播放状态
@@ -426,6 +144,94 @@ public class SpriteVisualizer : MonoBehaviour
             isPlayingAudio = false;
             soundSpriteObject.SetActive(false);
             currentSoundSpriteClassId = -1;
+        }
+    }
+    
+    // 根据渲染模式更新Parent Constraint组件
+    private void UpdateParentConstraints()
+    {
+        // 检查必要的引用是否存在
+        if (mainCameraTransform == null || centerEyePoseTransform == null)
+        {
+            return;
+        }
+        
+        // 获取当前渲染模式
+        bool isMonoMode = m_HoloKitCameraManager.ScreenRenderMode == ScreenRenderMode.Mono;
+        
+        // 只有在渲染模式发生变化时才更新Parent Constraint
+        if (isMonoMode != lastRenderModeMono)
+        {
+            if (showDebugInfo)
+            {
+                Debug.Log($"渲染模式已变更为: {(isMonoMode ? "Mono" : "Stereo")}");
+            }
+            
+            // 根据当前渲染模式设置Parent Constraint的source
+            Transform sourceTransform = isMonoMode ? mainCameraTransform : centerEyePoseTransform;
+            
+            // 更新CharacterFrame的Parent Constraint
+            UpdateConstraintSource(characterFrame, sourceTransform);
+            
+            // 更新TextNote的Parent Constraint
+            UpdateConstraintSource(textNote, sourceTransform);
+            
+            // 更新SoundSymbol的Parent Constraint
+            UpdateConstraintSource(soundSymbol, sourceTransform);
+            
+            // 更新lastRenderModeMono
+            lastRenderModeMono = isMonoMode;
+        }
+    }
+    
+    // 更新指定对象的Parent Constraint组件的source
+    private void UpdateConstraintSource(GameObject targetObject, Transform sourceTransform)
+    {
+        if (targetObject == null)
+        {
+            return;
+        }
+        
+        // 获取Parent Constraint组件
+        ParentConstraint constraint = targetObject.GetComponent<ParentConstraint>();
+        
+        if (constraint == null)
+        {
+            if (showDebugInfo)
+            {
+                Debug.LogWarning($"对象 {targetObject.name} 没有Parent Constraint组件");
+            }
+            return;
+        }
+        
+        // 检查是否已经设置了正确的source
+        if (constraint.sourceCount > 0 && constraint.GetSource(0).sourceTransform == sourceTransform)
+        {
+            return;
+        }
+        
+        Vector3 positionOffset = Vector3.zero;
+        // 清除所有现有的sources
+        if (constraint.sourceCount > 0)
+        {
+            positionOffset = constraint.GetTranslationOffset(0);
+            constraint.RemoveSource(0);
+        }
+        
+        // 添加新的source
+        ConstraintSource source = new ConstraintSource
+        {
+            sourceTransform = sourceTransform,
+            weight = 1.0f
+        };
+        constraint.AddSource(source);
+        constraint.SetTranslationOffset(0, positionOffset);
+        // 激活约束
+        constraint.constraintActive = true;
+        
+        if (showDebugInfo)
+        {
+            Debug.Log($"已更新 {targetObject.name} 的Parent Constraint source为 {sourceTransform.name}");
         }
     }
     
@@ -481,34 +287,7 @@ public class SpriteVisualizer : MonoBehaviour
             renderer.color = Color.white; // 重置颜色
         }
         
-        // 在激活前设置正确的位置和旋转
-        if (arCamera != null)
-        {
-            // 获取相机的变换信息
-            Transform cameraTransform = arCamera.transform;
-            
-            // 使用相对位置计算世界空间中的位置
-            Vector3 localOffset = new Vector3(
-                soundSpritePosition.x,
-                soundSpritePosition.y,
-                soundSpritePosition.z
-            );
-            
-            // 将本地偏移转换为世界空间偏移
-            Vector3 worldPosition = cameraTransform.position + 
-                                   cameraTransform.TransformDirection(localOffset);
-            
-            // 设置位置
-            soundSpriteObject.transform.position = worldPosition;
-            
-            // 直接设置为相机的旋转，不使用平滑过渡
-            soundSpriteObject.transform.rotation = cameraTransform.rotation;
-            
-            // 设置缩放
-            soundSpriteObject.transform.localScale = soundSpriteScale;
-        }
-        
-        // 显示声音Sprite
+        // 显示声音Sprite - 不再需要设置位置和旋转，因为使用Parent Constraint
         soundSpriteObject.SetActive(true);
         
         // 播放音频
@@ -518,12 +297,6 @@ public class SpriteVisualizer : MonoBehaviour
         
         // 记录当前显示的声音Sprite的类别ID
         currentSoundSpriteClassId = classId;
-        
-        // 更新上一帧的相机旋转，确保下一次更新时有正确的参考
-        if (arCamera != null)
-        {
-            lastCameraRotation = arCamera.transform.rotation;
-        }
         
         if (showDebugInfo)
         {
@@ -551,12 +324,6 @@ public class SpriteVisualizer : MonoBehaviour
         // 取消订阅事件
         if (yoloDetector != null)
             yoloDetector.OnDetectionsUpdated -= UpdateVisualizations;
-        
-        // 取消订阅AR会话状态变化事件
-        if (handleARSessionReset && arSession != null)
-        {
-            ARSession.stateChanged -= OnARSessionStateChanged;
-        }
         
         // 清理对象池
         foreach (var sprite in spritePool)
@@ -617,6 +384,16 @@ public class SpriteVisualizer : MonoBehaviour
             }
             activeSprites.Clear();
             
+            // 获取当前渲染模式下应该使用的source transform
+            bool isMonoMode = m_HoloKitCameraManager.ScreenRenderMode == ScreenRenderMode.Mono;
+            Transform sourceTransform = isMonoMode ? mainCameraTransform : centerEyePoseTransform;
+            
+            if (sourceTransform == null)
+            {
+                Debug.LogWarning("Source transform is null, cannot update sprite visualizations");
+                return;
+            }
+            
             // 为每个检测创建或重用Sprite对象
             foreach (var kvp in activeDetections)
             {
@@ -651,50 +428,41 @@ public class SpriteVisualizer : MonoBehaviour
                 
                 renderer.sprite = classSprites[detection.predictedClassId];
                 
-                // 设置位置
-                spriteObj.transform.position = detection.projectionPosition;
+                // 获取ParentConstraint组件
+                ParentConstraint constraint = spriteObj.GetComponent<ParentConstraint>();
+                if (constraint == null)
+                {
+                    Debug.LogError("ParentConstraint component not found on sprite object");
+                    continue;
+                }
                 
+                // 设置ParentConstraint的source
+                UpdateConstraintSource(spriteObj, sourceTransform);
+
+                constraint.SetTranslationOffset(0, new Vector3(
+                    detection.projectionPosition.x,
+                    detection.projectionPosition.y,
+                    projectionPlaneDistance
+                ));
+                Debug.Log($"Sprite position: {spriteObj.transform.localPosition}");
+
+                constraint.SetRotationOffset(0, Vector3.zero);
+
                 // 计算缩放比例，保持原始宽高比，但宽度与检测宽度匹配
                 float originalWidth = renderer.sprite.bounds.size.x;
                 float targetWidth = detection.projectionWidth;
                 float scale = targetWidth / originalWidth;
                 
                 spriteObj.transform.localScale = new Vector3(scale, scale, scale);
+                Debug.Log($"Sprite scale: {spriteObj.transform.localScale}");
                 
-                // 确保Sprite面向相机
-                if (arCamera != null)
-                {
-                    // 使用平滑旋转
-                    Quaternion targetRotation = arCamera.transform.rotation;
-                    spriteObj.transform.rotation = Quaternion.Slerp(
-                        spriteObj.transform.rotation,
-                        targetRotation,
-                        Time.deltaTime / rotationSmoothTime
-                    );
-                }
-                else
-                {
-                    spriteObj.transform.rotation = Camera.main.transform.rotation;
-                }
-                
-                // 添加调试信息
-                if (showDebugInfo)
-                {
-                    string className = detection.predictedClassId < classNames.Length ? 
-                                      classNames[detection.predictedClassId] : 
-                                      $"Class {detection.predictedClassId}";
-                    
-                    Debug.Log($"检测到: {className}, 置信度: {detection.maxClassProbability:F2}, BoundingBox: {detection.boundingBox}");
-                    Debug.Log($"该物体的显示位置: {detection.projectionPosition}, 宽度: {detection.projectionWidth}");
-                }
-                
-                // 激活对象
+                // 激活Sprite对象
                 spriteObj.SetActive(true);
             }
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"Error in UpdateSpriteVisualizations: {e.Message}\n{e.StackTrace}");
+            Debug.LogError($"Error in UpdateSpriteVisualizations: {e.Message}");
         }
     }
     
@@ -731,6 +499,10 @@ public class SpriteVisualizer : MonoBehaviour
                     renderer.material = spriteMaterial;
                     renderer.sortingOrder = 100; // 确保在前面显示
                     
+                    // 添加ParentConstraint组件
+                    ParentConstraint constraint = newObj.AddComponent<ParentConstraint>();
+                    constraint.constraintActive = true;
+                    
                     // 确保新创建的对象默认不可见
                     newObj.SetActive(false);
                     
@@ -752,96 +524,6 @@ public class SpriteVisualizer : MonoBehaviour
         {
             Debug.LogError($"Error in GetSpriteFromPool: {e.Message}");
             return null;
-        }
-    }
-    
-    // 处理AR会话状态变化
-    private void OnARSessionStateChanged(ARSessionStateChangedEventArgs args)
-    {
-        if (showDebugInfo)
-        {
-            Debug.Log($"AR会话状态变化: {args.state}");
-        }
-        
-        switch (args.state)
-        {
-            case ARSessionState.None:
-            case ARSessionState.CheckingAvailability:
-            case ARSessionState.NeedsInstall:
-            case ARSessionState.Installing:
-            case ARSessionState.Ready:
-                // 这些状态表示AR会话尚未开始或正在准备中
-                isARSessionTracking = false;
-                
-                // 如果会话已准备好但尚未启动，尝试启动会话
-                if (arSession != null && !arSession.enabled)
-                {
-                    arSession.enabled = true;
-                    if (showDebugInfo)
-                    {
-                        Debug.Log("AR会话已准备好，正在启动...");
-                    }
-                }
-                break;
-                
-            case ARSessionState.SessionInitializing:
-                // AR会话正在初始化
-                isARSessionTracking = false;
-                // 开始会话重置处理
-                if (sessionResetCoroutine != null)
-                {
-                    StopCoroutine(sessionResetCoroutine);
-                }
-                sessionResetCoroutine = StartCoroutine(HandleSessionReset());
-                break;
-                
-            case ARSessionState.SessionTracking:
-                // AR会话正在跟踪
-                isARSessionTracking = true;
-                break;
-        }
-    }
-    
-    // 处理会话重置的协程
-    private IEnumerator HandleSessionReset()
-    {
-        // 隐藏所有活跃的Sprite
-        foreach (var sprite in activeSprites)
-        {
-            if (sprite != null)
-            {
-                sprite.SetActive(false);
-            }
-        }
-        
-        // 隐藏声音Sprite
-        if (soundSpriteObject != null && soundSpriteObject.activeSelf)
-        {
-            soundSpriteObject.SetActive(false);
-        }
-        
-        // 停止音频播放
-        if (audioSource != null && audioSource.isPlaying)
-        {
-            audioSource.Stop();
-            isPlayingAudio = false;
-        }
-        
-        // 等待一段时间，让AR会话稳定
-        yield return new WaitForSeconds(sessionResetDelay);
-        
-        // 重置相机旋转记录
-        if (arCamera != null)
-        {
-            lastCameraRotation = arCamera.transform.rotation;
-        }
-        
-        // 清空检测结果
-        activeDetections.Clear();
-        
-        if (showDebugInfo)
-        {
-            Debug.Log("AR会话重置处理完成");
         }
     }
 }
