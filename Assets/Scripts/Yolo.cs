@@ -144,17 +144,21 @@ public class Yolo : MonoBehaviour
         if (args.textures.Count < 2)
             return;
 
-        Texture2D yTexture = args.textures[0];
-        Texture2D cbcrTexture = args.textures[1];
+        // Texture2D yTexture = args.textures[0];
+        // Texture2D cbcrTexture = args.textures[1];
         
+        //var material = arCameraBackground.material;
+        
+        var tempMaterial = arCameraManager.GetComponent<ARCameraBackground>().material;
+
         commandBuffer.Clear();
         
         // 设置YCbCr转换材质的纹理
-        yCbCrMaterial.SetTexture("_MainTex", yTexture);
-        yCbCrMaterial.SetTexture("_ChromaTex", cbcrTexture);
+        // yCbCrMaterial.SetTexture("_MainTex", yTexture);
+        // yCbCrMaterial.SetTexture("_ChromaTex", cbcrTexture);
         
         // 使用YCbCr材质将YCbCr转换为RGB，并绘制到中间纹理
-        commandBuffer.Blit(null, rgbIntermediate, yCbCrMaterial);
+        commandBuffer.Blit(null, rgbIntermediate, tempMaterial);
         
         // 直接在GPU上将纹理转换为张量
         commandBuffer.ToTensor(rgbIntermediate, inputTensor, _textureSettings);
