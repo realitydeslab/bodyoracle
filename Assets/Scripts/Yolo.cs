@@ -7,6 +7,7 @@ using System.Collections;
 using System;
 using UnityEngine.XR.ARSubsystems;
 using HoloKit;
+using UnityEngine.Rendering;
 
 public class Yolo : MonoBehaviour
 {
@@ -17,17 +18,12 @@ public class Yolo : MonoBehaviour
     private Model runtimeModel;
     private Worker worker;
     
-    private int cam_width;
-    private int cam_height;
-    private int crop_size;
-    
     private WebCamTexture webCamTexture;
     private bool useARCamera = false;
 
-    private static Texture2D _croppedTexture;
     private static TextureTransform _textureSettings;
 
-    [SerializeField] private float confidenceThreshold = 0.5f;
+    [SerializeField] private float confidenceThreshold = 0.6f;
     
     // 虚拟投影平面参数
     [SerializeField] private float projectionPlaneWidth =  2.8f;    // 投影平面的宽度（米）
@@ -41,10 +37,34 @@ public class Yolo : MonoBehaviour
     public event Action<List<DetectionData.PoseDetection>> OnDetectionsUpdated;
     private List<DetectionData.PoseDetection> latestDetections = new List<DetectionData.PoseDetection>();
     
+    // YCbCr转换相关
+    private Material yCbCrMaterial;
+    private CommandBuffer commandBuffer;
+    private RenderTexture rgbIntermediate;
+    private Tensor<float> inputTensor;
+    
+    // 用于调试
+    [SerializeField] private bool showDebugInfo = true;
+    
     void Start()
     {
         runtimeModel = ModelLoader.Load(modelAsset);
         worker = new Worker(runtimeModel, BackendType.GPUCompute);
+
+        _textureSettings = new TextureTransform();
+        _textureSettings.SetDimensions(640, 640);
+        _textureSettings.SetTensorLayout(TensorLayout.NCHW);
+
+        commandBuffer = new CommandBuffer();
+        commandBuffer.name = "YCbCrToTensorConversion";
+        
+        // 创建中间RGB纹理
+        rgbIntermediate = new RenderTexture(640, 640, 0, RenderTextureFormat.ARGB32);
+        rgbIntermediate.enableRandomWrite = true;
+        rgbIntermediate.Create();
+        
+        // 创建输入Tensor
+        inputTensor = new Tensor<float>(new TensorShape(1, 3, 640, 640));
 
 #if UNITY_IOS && !UNITY_EDITOR
         // use ARCameraManager on iOS
@@ -53,6 +73,7 @@ public class Yolo : MonoBehaviour
         if (arCameraManager != null)
         {
             arCameraManager.frameReceived += OnCameraFrameReceived;
+            yCbCrMaterial = arCameraManager.GetComponent<ARCameraBackground>().material;
         }
         else
         {
@@ -64,12 +85,7 @@ public class Yolo : MonoBehaviour
         useARCamera = false;
         InitializeWebCam();
 #endif
-
-        _textureSettings = new TextureTransform();
-        _textureSettings.SetDimensions(640, 640);
-        _textureSettings.SetTensorLayout(TensorLayout.NCHW);
         
-        // 确保在应用退出时释放资源
         Application.quitting += OnApplicationQuit;
     }
 
@@ -99,122 +115,58 @@ public class Yolo : MonoBehaviour
 
     private void ProcessWebCamFrame()
     {
-        // 使用RenderTexture和Graphics.Blit来处理原生纹理
-        RenderTexture tempRT = RenderTexture.GetTemporary(webCamTexture.width, webCamTexture.height, 0, RenderTextureFormat.ARGB32);
-        Graphics.Blit(webCamTexture, tempRT);
-        
-        // 创建一个可读写的Texture2D
-        Texture2D cameraTexture = new Texture2D(webCamTexture.width, webCamTexture.height, TextureFormat.RGB24, false);
-        
-        // 激活临时RenderTexture
-        RenderTexture prevRT = RenderTexture.active;
-        RenderTexture.active = tempRT;
-        
-        // 读取像素
-        cameraTexture.ReadPixels(new Rect(0, 0, tempRT.width, tempRT.height), 0, 0);
-        cameraTexture.Apply();
-        
-        // 恢复之前的RenderTexture
-        RenderTexture.active = prevRT;
-        RenderTexture.ReleaseTemporary(tempRT);
-        
-        cam_width = cameraTexture.width;
-        cam_height = cameraTexture.height;
-        crop_size = Mathf.Min(cam_width, cam_height);
-        Debug.Log($"cam_width: {cam_width}, cam_height: {cam_height}, crop_size: {crop_size}");
-        
-        Tensor<float> inputTensor = PreprocessTexture(cameraTexture);
-
-        try
-        {
-            worker.Schedule(inputTensor);
+        if (webCamTexture == null || !webCamTexture.isPlaying)
+            return;
             
-            Tensor outputTensor = null;
-            worker.CopyOutput(0, ref outputTensor);
-
-            ProcessOutput(outputTensor as Tensor<float>);
-            
-            outputTensor.Dispose();
-        }
-        finally
+        if (showDebugInfo)
         {
-            // 确保inputTensor被释放
-            inputTensor.Dispose();
-            Destroy(cameraTexture);
+            Debug.Log($"WebCamTexture Size: {webCamTexture.width}x{webCamTexture.height}");
         }
+        
+        // 清除命令缓冲区
+        commandBuffer.Clear();
+        // 将WebCamTexture绘制到中间纹理，调整大小为640x640
+        commandBuffer.Blit(webCamTexture, rgbIntermediate);
+        // 直接在GPU上将纹理转换为张量
+        commandBuffer.ToTensor(rgbIntermediate, inputTensor, _textureSettings);
+        
+        // 执行命令缓冲区
+        Graphics.ExecuteCommandBuffer(commandBuffer);
+
+        worker.Schedule(inputTensor);
+        Tensor outputTensor = worker.PeekOutput(0);
+        
+        ProcessOutput(outputTensor as Tensor<float>);
     }
 
     private void OnCameraFrameReceived(ARCameraFrameEventArgs args)
     {
-        if (args.textures.Count == 0) return;
-        
-        // 获取AR相机纹理
-        Texture2D arCameraTexture = args.textures[0];
-        
-        // 使用RenderTexture和Graphics.Blit来处理原生纹理
-        RenderTexture tempRT = RenderTexture.GetTemporary(arCameraTexture.width, arCameraTexture.height, 0, RenderTextureFormat.ARGB32);
-        Graphics.Blit(arCameraTexture, tempRT);
-        
-        // 创建一个可读写的Texture2D
-        Texture2D cameraTexture = new Texture2D(arCameraTexture.width, arCameraTexture.height, TextureFormat.RGB24, false);
-        
-        // 激活临时RenderTexture
-        RenderTexture prevRT = RenderTexture.active;
-        RenderTexture.active = tempRT;
-        
-        // 读取像素
-        cameraTexture.ReadPixels(new Rect(0, 0, tempRT.width, tempRT.height), 0, 0);
-        cameraTexture.Apply();
-        
-        // 恢复之前的RenderTexture
-        RenderTexture.active = prevRT;
-        RenderTexture.ReleaseTemporary(tempRT);
-        
-        cam_width = cameraTexture.width;
-        cam_height = cameraTexture.height;
-        crop_size = Mathf.Min(cam_width, cam_height);
+        if (args.textures.Count < 2)
+            return;
 
-        Tensor<float> inputTensor = PreprocessTexture(cameraTexture);
-
-        try
-        {
-            worker.Schedule(inputTensor);
-            
-            Tensor outputTensor = null;
-            worker.CopyOutput(0, ref outputTensor);
-
-            ProcessOutput(outputTensor as Tensor<float>);
-            
-            outputTensor.Dispose();
-        }
-        finally
-        {
-            // 确保inputTensor被释放
-            inputTensor.Dispose();
-            Destroy(cameraTexture);
-        }
-    }
-
-    private Tensor<float> PreprocessTexture(Texture2D texture)
-    {
-        // Check if the textures need to be recreated
-        if (_croppedTexture == null || _croppedTexture.width != crop_size)
-        {
-            if (_croppedTexture != null) Destroy(_croppedTexture);
-            _croppedTexture = new Texture2D(crop_size, crop_size, texture.format, false);
-        }
+        Texture2D yTexture = args.textures[0];
+        Texture2D cbcrTexture = args.textures[1];
         
-        // Crop
-        int start_x = (cam_width - crop_size) / 2;
-        int start_y = (cam_height - crop_size) / 2;
+        commandBuffer.Clear();
         
-        Color[] pixels = texture.GetPixels(start_x, start_y, crop_size, crop_size);
-        _croppedTexture.SetPixels(pixels);
-        _croppedTexture.Apply();
+        // 设置YCbCr转换材质的纹理
+        yCbCrMaterial.SetTexture("_MainTex", yTexture);
+        yCbCrMaterial.SetTexture("_ChromaTex", cbcrTexture);
+        
+        // 使用YCbCr材质将YCbCr转换为RGB，并绘制到中间纹理
+        commandBuffer.Blit(null, rgbIntermediate, yCbCrMaterial);
+        
+        // 直接在GPU上将纹理转换为张量
+        commandBuffer.ToTensor(rgbIntermediate, inputTensor, _textureSettings);
+        
+        // 执行命令缓冲区
+        Graphics.ExecuteCommandBuffer(commandBuffer);
+    
+        worker.Schedule(inputTensor);
+        Tensor outputTensor = worker.PeekOutput(0);
+        // worker.CopyOutput(0, ref outputTensor);
 
-        Tensor<float> convertedTensor = new Tensor<float>(new TensorShape(1, 3, 640, 640));
-        TextureConverter.ToTensor(_croppedTexture, convertedTensor, _textureSettings);
-        return convertedTensor;
+        ProcessOutput(outputTensor as Tensor<float>);
     }
 
     private void ProcessOutput(Tensor<float> output)
@@ -443,12 +395,6 @@ public class Yolo : MonoBehaviour
             worker = null;
         }
         
-        if (_croppedTexture != null)
-        {
-            Destroy(_croppedTexture);
-            _croppedTexture = null;
-        }
-        
         if (webCamTexture != null && webCamTexture.isPlaying)
         {
             webCamTexture.Stop();
@@ -457,6 +403,27 @@ public class Yolo : MonoBehaviour
         if (useARCamera && arCameraManager != null)
         {
             arCameraManager.frameReceived -= OnCameraFrameReceived;
+        }
+        
+        // 释放CommandBuffer
+        if (commandBuffer != null)
+        {
+            commandBuffer.Dispose();
+            commandBuffer = null;
+        }
+        
+        // 释放RenderTexture
+        if (rgbIntermediate != null)
+        {
+            rgbIntermediate.Release();
+            rgbIntermediate = null;
+        }
+        
+        // 释放TensorFloat
+        if (inputTensor != null)
+        {
+            inputTensor.Dispose();
+            inputTensor = null;
         }
     }
 
