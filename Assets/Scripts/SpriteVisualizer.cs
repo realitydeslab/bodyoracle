@@ -7,18 +7,17 @@ using UnityEngine.UI;
 using UnityEngine.XR.ARSubsystems;
 using System.Linq;
 using UnityEngine.Animations;
+using HoloKit;
 
 public class SpriteVisualizer : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private Yolo yoloDetector;
-    
+    [SerializeField] private HoloKitCameraManager m_HoloKitCameraManager;
     // Parent Constraint相关引用
-    [SerializeField] private GameObject characterFrame;
-    [SerializeField] private GameObject textNote;
-    [SerializeField] private GameObject soundSymbol;
     [SerializeField] private Transform mainCameraTransform;
     [SerializeField] private Transform centerEyePoseTransform;
+    [SerializeField] private GameObject constraintObject;
     private bool lastRenderModeMono = true; // 用于跟踪上一次的渲染模式
     
     [Header("Class Sprites")]
@@ -105,15 +104,6 @@ public class SpriteVisualizer : MonoBehaviour
         
         // 订阅检测事件
         yoloDetector.OnDetectionsUpdated += UpdateVisualizations;
-        
-        // 初始化Parent Constraint相关引用        
-        if (characterFrame == null || textNote == null || soundSymbol == null)
-        {
-            Debug.LogWarning("无法找到CharacterFrame, TextNote或SoundSymbol对象");
-            characterFrame = GameObject.Find("CharacterFrame");
-            textNote = GameObject.Find("TextNote");
-            soundSymbol = GameObject.Find("SoundSymbol");
-        }
 
         if (mainCameraTransform == null || centerEyePoseTransform == null)
         {
@@ -145,7 +135,6 @@ public class SpriteVisualizer : MonoBehaviour
         }
     }
     
-    // 根据渲染模式更新Parent Constraint组件
     private void UpdateParentConstraints()
     {
         // 检查必要的引用是否存在
@@ -154,9 +143,7 @@ public class SpriteVisualizer : MonoBehaviour
             return;
         }
         
-        // 获取当前渲染模式
-        // bool isMonoMode = m_HoloKitCameraManager.ScreenRenderMode == ScreenRenderMode.Mono;
-        bool isMonoMode = true;
+        bool isMonoMode = m_HoloKitCameraManager.ScreenRenderMode == ScreenRenderMode.Mono;
 
         // 只有在渲染模式发生变化时才更新Parent Constraint
         if (isMonoMode != lastRenderModeMono)
@@ -166,71 +153,22 @@ public class SpriteVisualizer : MonoBehaviour
                 Debug.Log($"渲染模式已变更为: {(isMonoMode ? "Mono" : "Stereo")}");
             }
             
-            // 根据当前渲染模式设置Parent Constraint的source
             Transform sourceTransform = isMonoMode ? mainCameraTransform : centerEyePoseTransform;
-            
-            // 更新CharacterFrame的Parent Constraint
-            UpdateConstraintSource(characterFrame, sourceTransform);
-            
-            // 更新TextNote的Parent Constraint
-            UpdateConstraintSource(textNote, sourceTransform);
-            
-            // 更新SoundSymbol的Parent Constraint
-            UpdateConstraintSource(soundSymbol, sourceTransform);
-            
-            // 更新lastRenderModeMono
-            lastRenderModeMono = isMonoMode;
-        }
-    }
-    
-    // 更新指定对象的Parent Constraint组件的source
-    private void UpdateConstraintSource(GameObject targetObject, Transform sourceTransform)
-    {
-        if (targetObject == null)
-        {
-            return;
-        }
-        
-        // 获取Parent Constraint组件
-        ParentConstraint constraint = targetObject.GetComponent<ParentConstraint>();
-        
-        if (constraint == null)
-        {
+            ParentConstraint constraint = constraintObject.GetComponent<ParentConstraint>();
+            if (constraint.sourceCount > 0){
+                constraint.RemoveSource(0);
+            }
+            constraint.AddSource(new ConstraintSource{
+                sourceTransform = sourceTransform,
+                weight = 1.0f
+            });
+            constraint.constraintActive = true;
             if (showDebugInfo)
             {
-                Debug.LogWarning($"对象 {targetObject.name} 没有Parent Constraint组件");
+                Debug.Log($"已更新 {constraintObject.name} 的Parent Constraint source为 {sourceTransform.name}");
             }
-            return;
-        }
-        
-        // 检查是否已经设置了正确的source
-        if (constraint.sourceCount > 0 && constraint.GetSource(0).sourceTransform == sourceTransform)
-        {
-            return;
-        }
-        
-        Vector3 positionOffset = Vector3.zero;
-        // 清除所有现有的sources
-        if (constraint.sourceCount > 0)
-        {
-            positionOffset = constraint.GetTranslationOffset(0);
-            constraint.RemoveSource(0);
-        }
-        
-        // 添加新的source
-        ConstraintSource source = new ConstraintSource
-        {
-            sourceTransform = sourceTransform,
-            weight = 1.0f
-        };
-        constraint.AddSource(source);
-        constraint.SetTranslationOffset(0, positionOffset);
-        // 激活约束
-        constraint.constraintActive = true;
-        
-        if (showDebugInfo)
-        {
-            Debug.Log($"已更新 {targetObject.name} 的Parent Constraint source为 {sourceTransform.name}");
+
+            lastRenderModeMono = isMonoMode;
         }
     }
     
@@ -286,7 +224,6 @@ public class SpriteVisualizer : MonoBehaviour
             renderer.color = Color.white; // 重置颜色
         }
         
-        // 显示声音Sprite - 不再需要设置位置和旋转，因为使用Parent Constraint
         soundSpriteObject.SetActive(true);
         
         // 播放音频
@@ -383,18 +320,6 @@ public class SpriteVisualizer : MonoBehaviour
             }
             activeSprites.Clear();
             
-            // 获取当前渲染模式下应该使用的source transform
-            // bool isMonoMode = m_HoloKitCameraManager.ScreenRenderMode == ScreenRenderMode.Mono;
-            bool isMonoMode = true;
-
-            Transform sourceTransform = isMonoMode ? mainCameraTransform : centerEyePoseTransform;
-            
-            if (sourceTransform == null)
-            {
-                Debug.LogWarning("Source transform is null, cannot update sprite visualizations");
-                return;
-            }
-            
             // 为每个检测创建或重用Sprite对象
             foreach (var kvp in activeDetections)
             {
@@ -429,25 +354,16 @@ public class SpriteVisualizer : MonoBehaviour
                 
                 renderer.sprite = classSprites[detection.predictedClassId];
                 
-                // 获取ParentConstraint组件
-                ParentConstraint constraint = spriteObj.GetComponent<ParentConstraint>();
-                if (constraint == null)
-                {
-                    Debug.LogError("ParentConstraint component not found on sprite object");
-                    continue;
-                }
-                
-                // 设置ParentConstraint的source
-                UpdateConstraintSource(spriteObj, sourceTransform);
-
-                constraint.SetTranslationOffset(0, new Vector3(
+                // 设置sprite的位置
+                spriteObj.transform.localPosition = new Vector3(
                     detection.projectionPosition.x,
-                    detection.projectionPosition.y,
+                    detection.projectionPosition.y, 
                     projectionPlaneDistance
-                ));
-                Debug.Log($"Sprite position: {spriteObj.transform.localPosition}");
+                );
+                // Debug.Log($"Sprite position: {spriteObj.transform.localPosition}");
 
-                constraint.SetRotationOffset(0, Vector3.zero);
+                // 设置sprite的旋转
+                spriteObj.transform.localRotation = Quaternion.identity;
 
                 // 计算缩放比例，保持原始宽高比，但宽度与检测宽度匹配
                 float originalWidth = renderer.sprite.bounds.size.x;
@@ -455,7 +371,7 @@ public class SpriteVisualizer : MonoBehaviour
                 float scale = targetWidth / originalWidth;
                 
                 spriteObj.transform.localScale = new Vector3(scale, scale, scale);
-                Debug.Log($"Sprite scale: {spriteObj.transform.localScale}");
+                // Debug.Log($"Sprite scale: {spriteObj.transform.localScale}");
                 
                 // 激活Sprite对象
                 spriteObj.SetActive(true);
@@ -499,10 +415,6 @@ public class SpriteVisualizer : MonoBehaviour
                     SpriteRenderer renderer = newObj.AddComponent<SpriteRenderer>();
                     renderer.material = spriteMaterial;
                     renderer.sortingOrder = 100; // 确保在前面显示
-                    
-                    // 添加ParentConstraint组件
-                    ParentConstraint constraint = newObj.AddComponent<ParentConstraint>();
-                    constraint.constraintActive = true;
                     
                     // 确保新创建的对象默认不可见
                     newObj.SetActive(false);

@@ -19,7 +19,7 @@ public class Yolo : MonoBehaviour
     
     private WebCamTexture webCamTexture;
     private bool useARCamera = false;
-    // [SerializeField] private RawImage rawImage1;
+    [SerializeField] private RawImage rawImage1;
 
     private static TextureTransform _textureSettings;
 
@@ -194,12 +194,22 @@ public class Yolo : MonoBehaviour
             
             yCbCrMaterial.SetFloat("_AspectRatio", aspectRatio);
         }
-        else return;
+        else
+        {
+            Debug.LogError("No YCbCr textures found");
+        }
 
         commandBuffer.Clear();
         commandBuffer.Blit(null, rgbIntermediate, yCbCrMaterial);
+
+        Graphics.ExecuteCommandBuffer(commandBuffer);
+        rawImage1.texture = rgbIntermediate;
+        commandBuffer.Clear();
+        
         commandBuffer.ToTensor(rgbIntermediate, inputTensor, _textureSettings);
         Graphics.ExecuteCommandBuffer(commandBuffer);
+        
+        // rawImage1.texture = TextureConverter.ToTexture(inputTensor);
 
         worker.Schedule(inputTensor);
         Tensor outputTensor = worker.PeekOutput(0);
