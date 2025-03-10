@@ -6,14 +6,12 @@ using UnityEngine.XR.ARFoundation;
 using UnityEngine.UI;
 using UnityEngine.XR.ARSubsystems;
 using System.Linq;
-using HoloKit;
 using UnityEngine.Animations;
 
 public class SpriteVisualizer : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private Yolo yoloDetector;
-    public HoloKitCameraManager m_HoloKitCameraManager;
     
     // Parent Constraint相关引用
     [SerializeField] private GameObject characterFrame;
@@ -157,8 +155,9 @@ public class SpriteVisualizer : MonoBehaviour
         }
         
         // 获取当前渲染模式
-        bool isMonoMode = m_HoloKitCameraManager.ScreenRenderMode == ScreenRenderMode.Mono;
-        
+        // bool isMonoMode = m_HoloKitCameraManager.ScreenRenderMode == ScreenRenderMode.Mono;
+        bool isMonoMode = true;
+
         // 只有在渲染模式发生变化时才更新Parent Constraint
         if (isMonoMode != lastRenderModeMono)
         {
@@ -385,7 +384,9 @@ public class SpriteVisualizer : MonoBehaviour
             activeSprites.Clear();
             
             // 获取当前渲染模式下应该使用的source transform
-            bool isMonoMode = m_HoloKitCameraManager.ScreenRenderMode == ScreenRenderMode.Mono;
+            // bool isMonoMode = m_HoloKitCameraManager.ScreenRenderMode == ScreenRenderMode.Mono;
+            bool isMonoMode = true;
+
             Transform sourceTransform = isMonoMode ? mainCameraTransform : centerEyePoseTransform;
             
             if (sourceTransform == null)
