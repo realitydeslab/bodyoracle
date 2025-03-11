@@ -80,11 +80,6 @@ public class Yolo : MonoBehaviour
             arCameraManager.frameReceived += OnCameraFrameReceived;
             _textureSettings.SetChannelSwizzle(1, 2, 3, 0);
         }
-        else
-        {
-            Debug.LogError("ARCameraManager not found, falling back to WebCamTexture");
-            InitializeWebCam();
-        }
 #else
         // use WebCamTexture on other platforms
         useARCamera = false;
@@ -100,7 +95,7 @@ public class Yolo : MonoBehaviour
         WebCamDevice[] devices = WebCamTexture.devices;
         if (devices.Length > 0)
         {
-            webCamTexture = new WebCamTexture(devices[0].name, 1280, 720, 24);
+            webCamTexture = new WebCamTexture(devices[0].name);
             webCamTexture.Play();
         }
         else
@@ -125,29 +120,22 @@ public class Yolo : MonoBehaviour
 
         // rawImage_people.texture = webCamTexture;
             
-        if (showDebugInfo)
-        {
-            Debug.Log($"WebCamTexture Size: {webCamTexture.width}x{webCamTexture.height}");
-        }
-        
-        _mainTexture = webCamTexture;
-
-        yCbCrMaterial.SetTexture("_MainTex", _mainTexture);
-        yCbCrMaterial.SetFloat("_UseYCbCr", 0.0f);
-        
         // Calculate aspect ratio for cropping logic
         float sourceWidth = _mainTexture.width;
         float sourceHeight = _mainTexture.height;
         float aspectRatio = sourceWidth / sourceHeight;
         
-        yCbCrMaterial.SetFloat("_AspectRatio", aspectRatio);
+        _mainTexture = webCamTexture;
+
+        cropMaterial.SetTexture("_MainTex", _mainTexture);
+        cropMaterial.SetFloat("_AspectRatio", aspectRatio);
 
         commandBuffer.Clear();
-        commandBuffer.Blit(null, rgbIntermediate, yCbCrMaterial);
+        commandBuffer.Blit(null, rgbIntermediate, cropMaterial);
         commandBuffer.ToTensor(rgbIntermediate, inputTensor, _textureSettings);
         Graphics.ExecuteCommandBuffer(commandBuffer);
 
-        // rawImage1.texture = TextureConverter.ToTexture(inputTensor);
+        rawImage1.texture = TextureConverter.ToTexture(inputTensor);
 
         worker.Schedule(inputTensor);
         Tensor outputTensor = worker.PeekOutput(0);
@@ -159,57 +147,25 @@ public class Yolo : MonoBehaviour
     {
         if (args.textures.Count < 2)
             return;
+        }        
+        yCbCrMaterial.SetTexture("_textureY", args.textures[0]);
+        yCbCrMaterial.SetTexture("_textureCbCr", args.textures[1]);
 
-        bool useYCbCr = false;
+        // Calculate aspect ratio for cropping logic
+        float sourceWidth = args.textures[0].width;
+        float sourceHeight = args.textures[0].height;
+        float aspectRatio = sourceWidth / sourceHeight;
         
-        if (args.textures.Count > 0)
-        {
-            foreach (var tex in args.textures)
-            {
-                switch (tex.format)
-                {
-                    case TextureFormat.R8:
-                        _yTexture = tex as Texture2D;
-                        useYCbCr = true;
-                        break;
-                    case TextureFormat.RG16:
-                        _cbCrTexture = tex as Texture2D;
-                        useYCbCr = true;
-                        break;
-                }
-            }
-        }
-
-        if (useYCbCr && _yTexture != null && _cbCrTexture != null)
-        {
-            // Set the YCbCr textures
-            yCbCrMaterial.SetTexture("_YTex", _yTexture);
-            yCbCrMaterial.SetTexture("_CbCrTex", _cbCrTexture);
-            yCbCrMaterial.SetFloat("_UseYCbCr", 1.0f);
-            
-            // Calculate aspect ratio for cropping logic
-            float sourceWidth = _yTexture.width;
-            float sourceHeight = _yTexture.height;
-            float aspectRatio = sourceWidth / sourceHeight;
-            
-            yCbCrMaterial.SetFloat("_AspectRatio", aspectRatio);
-        }
-        else
-        {
-            Debug.LogError("No YCbCr textures found");
-        }
+        cropMaterial.SetFloat("_AspectRatio", aspectRatio);
 
         commandBuffer.Clear();
         commandBuffer.Blit(null, rgbIntermediate, yCbCrMaterial);
-
-        Graphics.ExecuteCommandBuffer(commandBuffer);
-        rawImage1.texture = rgbIntermediate;
-        commandBuffer.Clear();
-        
+        commandBuffer.Blit(rgbIntermediate, cropedIntermediate, cropMaterial);
         commandBuffer.ToTensor(rgbIntermediate, inputTensor, _textureSettings);
         Graphics.ExecuteCommandBuffer(commandBuffer);
         
-        // rawImage1.texture = TextureConverter.ToTexture(inputTensor);
+        rawImage1.texture = rgbIntermediate;
+//        rawImage1.texture = TextureConverter.ToTexture(inputTensor);
 
         worker.Schedule(inputTensor);
         Tensor outputTensor = worker.PeekOutput(0);
