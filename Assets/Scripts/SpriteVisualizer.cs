@@ -35,7 +35,7 @@ public class SpriteVisualizer : MonoBehaviour
     [Header("Visualization Settings")]
     [SerializeField] private bool showDebugInfo = false; // 是否显示调试信息
     [SerializeField] private Material spriteMaterial; // Sprite使用的材质
-    [SerializeField] private float projectionPlaneDistance = 9.0f; // 投影平面距离相机的距离（米）
+    [SerializeField] private float projectionPlaneDistance = 5.2f; // 投影平面距离相机的距离（米）
     
     // 音频播放器
     private AudioSource audioSource;

@@ -4,13 +4,15 @@ Shader "Custom/CropShader"
     {
         _MainTex ("Main Texture", 2D) = "black" {}
         _AspectRatio ("Aspect Ratio", Float) = 1.0
+        _Rotate ("Rotate", Float) = 0.0
     }
-
     SubShader
     {
-        Tags { 
-            "RenderType"="Opaque" 
-            "Queue"="Geometry" }
+        Tags
+        {
+            "RenderType"="Opaque"
+            "Queue"="Geometry"
+        }
         LOD 100
 
         Pass
@@ -34,7 +36,8 @@ Shader "Custom/CropShader"
             };
 
             sampler2D _MainTex;
-            
+            float _AspectRatio;
+            float _Rotate;
             v2f vert (appdata v)
             {
                 v2f o;
@@ -42,7 +45,8 @@ Shader "Custom/CropShader"
                 o.uv = v.uv;
                 return o;
             }
-
+            
+            // Extract center square from input texture
             float2 extractCenterSquare(float2 uv, float aspectRatio)
             {
                 float2 center = float2(0.5, 0.5);
@@ -76,6 +80,10 @@ Shader "Custom/CropShader"
             {
                 // Extract center square from input texture
                 float2 squareUV = extractCenterSquare(i.uv, _AspectRatio);
+                
+                if (_Rotate > 0.5) {
+                    squareUV = float2(1.0 - squareUV.y, squareUV.x);
+                }
                 
                 return tex2D(_MainTex, squareUV);
             }

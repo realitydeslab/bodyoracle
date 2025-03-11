@@ -8,11 +8,13 @@ using System;
 using UnityEngine.XR.ARSubsystems;
 using UnityEngine.Rendering;
 using System.IO;
+using HoloKit;
 
 public class Yolo : MonoBehaviour
 {
     public GameObject CenterEyePose;
     [SerializeField] private ARCameraManager arCameraManager;
+    [SerializeField] private HoloKitCameraManager m_HoloKitCameraManager;
     [SerializeField] private ModelAsset modelAsset;
     private Model runtimeModel;
     private Worker worker;
@@ -20,6 +22,7 @@ public class Yolo : MonoBehaviour
     private WebCamTexture webCamTexture;
     private bool useARCamera = false;
     [SerializeField] private RawImage rawImage1;
+    [SerializeField] private RawImage rawImage2;
 
     private static TextureTransform _textureSettings;
 
@@ -42,8 +45,10 @@ public class Yolo : MonoBehaviour
     private Texture2D _cbCrTexture;
     private Texture _mainTexture;
     [SerializeField] private Material yCbCrMaterial;
+    [SerializeField] private Material cropMaterial;
+    private RenderTexture rgbIntermediate;
+    private RenderTexture cropIntermediate;
     private CommandBuffer commandBuffer;
-   [SerializeField] private RenderTexture rgbIntermediate;
     private Tensor<float> inputTensor;
     
     // 用于调试
@@ -61,13 +66,6 @@ public class Yolo : MonoBehaviour
         commandBuffer = new CommandBuffer();
         commandBuffer.name = "YCbCrToTensorConversion";
         
-        // 创建中间RGB纹理
-        if (rgbIntermediate == null) {
-            rgbIntermediate = new RenderTexture(640, 640, 0, RenderTextureFormat.ARGB32);
-            rgbIntermediate.enableRandomWrite = true;
-            rgbIntermediate.Create();
-        }
-        
         // 创建输入Tensor
         inputTensor = new Tensor<float>(new TensorShape(1, 3, 640, 640));
 
@@ -75,39 +73,24 @@ public class Yolo : MonoBehaviour
         // use ARCameraManager on iOS
         useARCamera = true;
         arCameraManager = FindAnyObjectByType<ARCameraManager>();
-        if (arCameraManager != null)
-        {
-            arCameraManager.frameReceived += OnCameraFrameReceived;
-            _textureSettings.SetChannelSwizzle(1, 2, 3, 0);
-        }
+        arCameraManager.frameReceived += OnCameraFrameReceived;
+        // _textureSettings.SetChannelSwizzle(1, 2, 3, 0);
 #else
         // use WebCamTexture on other platforms
         useARCamera = false;
-        InitializeWebCam();
+        WebCamDevice[] devices = WebCamTexture.devices;
+        webCamTexture = new WebCamTexture(devices[0].name);
+        webCamTexture.requestedFPS = 30; // 如果帧率太高，mac里unity运行会卡
+        webCamTexture.Play();
 #endif
         
         Application.quitting += OnApplicationQuit;
     }
 
-    private void InitializeWebCam()
-    {
-        // initialize WebCamTexture
-        WebCamDevice[] devices = WebCamTexture.devices;
-        if (devices.Length > 0)
-        {
-            webCamTexture = new WebCamTexture(devices[0].name);
-            webCamTexture.Play();
-        }
-        else
-        {
-            Debug.LogError("No webcam found");
-        }
-    }
-
     void Update()
     {
         // if using WebCamTexture, process image Here
-        if (!useARCamera && webCamTexture != null && webCamTexture.isPlaying && webCamTexture.didUpdateThisFrame)
+        if (!useARCamera && webCamTexture.didUpdateThisFrame)
         {
             ProcessWebCamFrame();
         }
@@ -117,25 +100,33 @@ public class Yolo : MonoBehaviour
     {
         if (webCamTexture == null || !webCamTexture.isPlaying)
             return;
-
-        // rawImage_people.texture = webCamTexture;
             
-        // Calculate aspect ratio for cropping logic
-        float sourceWidth = _mainTexture.width;
-        float sourceHeight = _mainTexture.height;
-        float aspectRatio = sourceWidth / sourceHeight;
-        
-        _mainTexture = webCamTexture;
+        if (showDebugInfo)
+        {
+            Debug.Log($"WebCamTexture Size: {webCamTexture.width}x{webCamTexture.height}");
+        }
 
+        if (cropIntermediate == null) {
+            int a = Mathf.Min(webCamTexture.width, webCamTexture.height);
+            cropIntermediate = new RenderTexture(a, a, 0, RenderTextureFormat.ARGB32);
+            cropIntermediate.enableRandomWrite = true;
+            cropIntermediate.filterMode = FilterMode.Trilinear;
+            cropIntermediate.Create();
+        }
+
+        float aspectRatio = webCamTexture.width / webCamTexture.height;
+        _mainTexture = webCamTexture;
         cropMaterial.SetTexture("_MainTex", _mainTexture);
         cropMaterial.SetFloat("_AspectRatio", aspectRatio);
+        cropMaterial.SetFloat("_Rotate", 0.0f);
 
         commandBuffer.Clear();
-        commandBuffer.Blit(null, rgbIntermediate, cropMaterial);
-        commandBuffer.ToTensor(rgbIntermediate, inputTensor, _textureSettings);
+        commandBuffer.Blit(null, cropIntermediate, cropMaterial);
+        commandBuffer.ToTensor(cropIntermediate, inputTensor, _textureSettings);
         Graphics.ExecuteCommandBuffer(commandBuffer);
 
-        rawImage1.texture = TextureConverter.ToTexture(inputTensor);
+        // rawImage1.texture = cropIntermediate;
+        // rawImage2.texture = TextureConverter.ToTexture(inputTensor);
 
         worker.Schedule(inputTensor);
         Tensor outputTensor = worker.PeekOutput(0);
@@ -147,25 +138,43 @@ public class Yolo : MonoBehaviour
     {
         if (args.textures.Count < 2)
             return;
-        }        
-        yCbCrMaterial.SetTexture("_textureY", args.textures[0]);
-        yCbCrMaterial.SetTexture("_textureCbCr", args.textures[1]);
 
-        // Calculate aspect ratio for cropping logic
-        float sourceWidth = args.textures[0].width;
-        float sourceHeight = args.textures[0].height;
-        float aspectRatio = sourceWidth / sourceHeight;
+        _yTexture = args.textures[0];
+        _cbCrTexture = args.textures[1];
+        float aspectRatio = _yTexture.width / _yTexture.height;
+
+        if (rgbIntermediate == null) {
+            rgbIntermediate = new RenderTexture(_yTexture.width, _yTexture.height, 0, RenderTextureFormat.ARGB32);
+            rgbIntermediate.enableRandomWrite = true;
+            rgbIntermediate.filterMode = FilterMode.Trilinear;
+            rgbIntermediate.Create();
+        }
         
+        if (cropIntermediate == null) {
+            int a = Mathf.Min(_yTexture.width, _yTexture.height);
+            cropIntermediate = new RenderTexture(a, a, 0, RenderTextureFormat.ARGB32);
+            cropIntermediate.enableRandomWrite = true;
+            cropIntermediate.filterMode = FilterMode.Trilinear;
+            cropIntermediate.Create();
+        }
+        
+        yCbCrMaterial.SetTexture("_textureY", _yTexture);
+        yCbCrMaterial.SetTexture("_textureCbCr", _cbCrTexture);
         cropMaterial.SetFloat("_AspectRatio", aspectRatio);
-
+        if (m_HoloKitCameraManager.ScreenRenderMode == ScreenRenderMode.Mono) {
+            cropMaterial.SetFloat("_Rotate", 1.0f);
+        } else {
+            cropMaterial.SetFloat("_Rotate", 0.0f);
+        }
+        
         commandBuffer.Clear();
         commandBuffer.Blit(null, rgbIntermediate, yCbCrMaterial);
-        commandBuffer.Blit(rgbIntermediate, cropedIntermediate, cropMaterial);
-        commandBuffer.ToTensor(rgbIntermediate, inputTensor, _textureSettings);
+        commandBuffer.Blit(rgbIntermediate, cropIntermediate, cropMaterial);
+        commandBuffer.ToTensor(cropIntermediate, inputTensor, _textureSettings);
         Graphics.ExecuteCommandBuffer(commandBuffer);
         
-        rawImage1.texture = rgbIntermediate;
-//        rawImage1.texture = TextureConverter.ToTexture(inputTensor);
+        // rawImage1.texture = rgbIntermediate;
+        // rawImage2.texture = cropIntermediate;
 
         worker.Schedule(inputTensor);
         Tensor outputTensor = worker.PeekOutput(0);
