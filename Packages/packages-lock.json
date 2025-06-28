@@ -278,10 +278,10 @@
       "depth": 0,
       "source": "git",
       "dependencies": {
-        "com.unity.xr.arfoundation": "6.0.4",
-        "com.unity.xr.arkit": "6.0.4"
+        "com.unity.xr.arfoundation": "6.0.5",
+        "com.unity.xr.arkit": "6.0.5"
       },
-      "hash": "5bc5b409a507a3785de031fb8bfcceffe7a886f9"
+      "hash": "98885b121dd8a6ee27037f71b0ad2d9918c59ef5"
     },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",

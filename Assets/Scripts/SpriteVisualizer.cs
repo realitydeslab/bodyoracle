@@ -17,9 +17,9 @@ public class SpriteVisualizer : MonoBehaviour
     // Parent Constraint相关引用
     [SerializeField] private Transform mainCameraTransform;
     [SerializeField] private Transform centerEyePoseTransform;
-    [SerializeField] private GameObject constraintObject;
+    [SerializeField] private ParentConstraint constraintObject;
     private bool lastRenderModeMono = true; // 用于跟踪上一次的渲染模式
-    
+
     [Header("Class Sprites")]
     [SerializeField] private Sprite[] classSprites; // 每个类别对应的Sprite
     [SerializeField] private string[] classNames; // 类别名称，用于调试
@@ -28,13 +28,19 @@ public class SpriteVisualizer : MonoBehaviour
     [SerializeField] private Sprite[] soundSprites; // 每个类别对应的声音Sprite
     [SerializeField] private AudioClip[] soundClips; // 每个类别对应的音频
     
+    [Header("UI Panel")]
+    [SerializeField] private GameObject panel_mono;
+    [SerializeField] private GameObject panel_stereo;
+
     [Header("Sound Sprite Settings")]
-    [SerializeField] private GameObject soundSpriteObject; // 声音Sprite对象
+    [SerializeField] private GameObject soundSpriteObject_mono; // 声音Sprite对象
+    [SerializeField] private GameObject soundSpriteObject_left;
+    [SerializeField] private GameObject soundSpriteObject_right;
     [SerializeField] private Button triggerButton; // 触发按钮
     
     [Header("Visualization Settings")]
     [SerializeField] private bool showDebugInfo = false; // 是否显示调试信息
-    [SerializeField] private Material spriteMaterial; // Sprite使用的材质
+    private Material spriteMaterial; // Sprite使用的材质
     [SerializeField] private float projectionPlaneDistance = 5.2f; // 投影平面距离相机的距离（米）
     
     // 音频播放器
@@ -50,6 +56,10 @@ public class SpriteVisualizer : MonoBehaviour
     
     // 当前活跃的检测结果
     private Dictionary<int, DetectionData.PoseDetection> activeDetections = new Dictionary<int, DetectionData.PoseDetection>();
+
+    [SerializeField] private TMP_Text fps_text;
+    [SerializeField] private float refreshrate = 1f;
+    private float fps_timer;
     
     void Start()
     {
@@ -81,24 +91,17 @@ public class SpriteVisualizer : MonoBehaviour
         {
             Debug.LogWarning("Sound clips array is not properly set up. Expected at least 7 audio clips.");
         }
-        
-        // 如果没有指定材质，使用默认的Sprite材质
-        if (spriteMaterial == null)
-        {
-            spriteMaterial = new Material(Shader.Find("Sprites/Default"));
-        }
+    
+        spriteMaterial = new Material(Shader.Find("Sprites/Default"));
         
         // 添加音频源
         audioSource = gameObject.AddComponent<AudioSource>();
         audioSource.playOnAwake = false;
         
         // 设置按钮点击事件
-        if (triggerButton != null)
-        {
+        if (triggerButton != null) {
             triggerButton.onClick.AddListener(OnTriggerButtonClicked);
-        }
-        else
-        {
+        } else{
             Debug.LogWarning("Trigger button is not assigned.");
         }
         
@@ -117,11 +120,21 @@ public class SpriteVisualizer : MonoBehaviour
     
     void Update()
     {
+        if (Time.unscaledTime > fps_timer)
+        {
+            int fps = (int)(1f / Time.unscaledDeltaTime);
+            fps_text.text = "fps: " + fps;
+            fps_timer = Time.unscaledTime + refreshrate;
+        }
+
         // 检查音频播放状态
         CheckAudioPlaybackStatus();
-        
+
+#if UNITY_IOS && !UNITY_EDITOR
         // 根据渲染模式切换Parent Constraint的source
+        Debug.Log("parent constraint check");
         UpdateParentConstraints();
+#endif
     }
     
     // 检查音频播放状态
@@ -130,8 +143,11 @@ public class SpriteVisualizer : MonoBehaviour
         if (isPlayingAudio && !audioSource.isPlaying)
         {
             isPlayingAudio = false;
-            soundSpriteObject.SetActive(false);
+            soundSpriteObject_mono.SetActive(false);
+            soundSpriteObject_left.SetActive(false);
+            soundSpriteObject_right.SetActive(false);
             currentSoundSpriteClassId = -1;
+            DetectionData.isDetecting = true;
         }
     }
     
@@ -139,23 +155,20 @@ public class SpriteVisualizer : MonoBehaviour
     {
         // 检查必要的引用是否存在
         if (mainCameraTransform == null || centerEyePoseTransform == null)
-        {
             return;
-        }
         
         bool isMonoMode = m_HoloKitCameraManager.ScreenRenderMode == ScreenRenderMode.Mono;
 
         // 只有在渲染模式发生变化时才更新Parent Constraint
         if (isMonoMode != lastRenderModeMono)
         {
-            if (showDebugInfo)
-            {
+            if (showDebugInfo) {
                 Debug.Log($"渲染模式已变更为: {(isMonoMode ? "Mono" : "Stereo")}");
             }
-            
+
             Transform sourceTransform = isMonoMode ? mainCameraTransform : centerEyePoseTransform;
-            ParentConstraint constraint = constraintObject.GetComponent<ParentConstraint>();
-            if (constraint.sourceCount > 0){
+            ParentConstraint constraint = constraintObject;
+            if (constraint.sourceCount > 0) {
                 constraint.RemoveSource(0);
             }
             constraint.AddSource(new ConstraintSource{
@@ -165,7 +178,15 @@ public class SpriteVisualizer : MonoBehaviour
             constraint.constraintActive = true;
             if (showDebugInfo)
             {
-                Debug.Log($"已更新 {constraintObject.name} 的Parent Constraint source为 {sourceTransform.name}");
+                Debug.Log($"已更新Parent Constraint source为 {sourceTransform.name}");
+            }
+
+            if (isMonoMode) {
+                panel_mono.SetActive(true);
+                panel_stereo.SetActive(false);
+            } else {
+                panel_mono.SetActive(false);
+                panel_stereo.SetActive(true);
             }
 
             lastRenderModeMono = isMonoMode;
@@ -175,19 +196,24 @@ public class SpriteVisualizer : MonoBehaviour
     // 按钮点击事件
     public void OnTriggerButtonClicked()
     {
-        // 如果正在播放音频，停止播放并隐藏声音Sprite
+        Debug.Log("button pressed");
+        // 如果正在播放音频，忽略按钮行为
         if (isPlayingAudio)
-        {
-            StopSoundAndHideSprite();
             return;
-        }
         
         // 尝试获取中心检测结果
         DetectionData.PoseDetection centerDetection;
         if (yoloDetector.TryGetCenterDetection(out centerDetection))
         {
+            DetectionData.isDetecting = false;
+
             // 显示声音Sprite并播放音频
             ShowSoundSpriteAndPlayAudio(centerDetection.predictedClassId);
+
+            // 清除当前活跃的检测，仅保留中心元素
+            activeDetections.Clear();
+            activeDetections[GetDetectionId(centerDetection)] = centerDetection;
+            UpdateSpriteVisualizations();
         }
         else
         {
@@ -202,6 +228,8 @@ public class SpriteVisualizer : MonoBehaviour
     // 显示声音Sprite并播放音频
     private void ShowSoundSpriteAndPlayAudio(int classId)
     {
+        Debug.Log("show sound sprite and play audio.");
+
         // 验证类别ID是否有效
         if (classId < 0 || classId >= soundSprites.Length || soundSprites[classId] == null)
         {
@@ -217,15 +245,23 @@ public class SpriteVisualizer : MonoBehaviour
         }
         
         // 设置声音Sprite
-        SpriteRenderer renderer = soundSpriteObject.GetComponent<SpriteRenderer>();
-        if (renderer != null)
-        {
+        Image renderer = null;
+        Image renderer1 = null;
+        if (lastRenderModeMono) {
+            Debug.Log("mono!");
+            renderer = soundSpriteObject_mono.GetComponent<Image>();
             renderer.sprite = soundSprites[classId];
-            renderer.color = Color.white; // 重置颜色
+            soundSpriteObject_mono.SetActive(true);
+        } else {
+            Debug.Log("stereo!");
+            renderer = soundSpriteObject_left.GetComponent<Image>();
+            renderer1 = soundSpriteObject_right.GetComponent<Image>();
+            renderer.sprite = soundSprites[classId];
+            renderer1.sprite = soundSprites[classId];
+            soundSpriteObject_left.SetActive(true);
+            soundSpriteObject_right.SetActive(true);
         }
-        
-        soundSpriteObject.SetActive(true);
-        
+    
         // 播放音频
         audioSource.clip = soundClips[classId];
         audioSource.Play();
@@ -239,20 +275,6 @@ public class SpriteVisualizer : MonoBehaviour
             string className = classId < classNames.Length ? classNames[classId] : $"Class {classId}";
             Debug.Log($"显示声音Sprite并播放音频: {className}");
         }
-    }
-    
-    // 停止声音并隐藏Sprite
-    private void StopSoundAndHideSprite()
-    {
-        // 停止音频播放
-        audioSource.Stop();
-        isPlayingAudio = false;
-        
-        // 隐藏声音Sprite
-        soundSpriteObject.SetActive(false);
-        
-        // 重置当前显示的声音Sprite的类别ID
-        currentSoundSpriteClassId = -1;
     }
     
     void OnDestroy()
@@ -278,17 +300,19 @@ public class SpriteVisualizer : MonoBehaviour
         {
             // 清除当前活跃的检测
             activeDetections.Clear();
-            
-            // 处理新的检测结果
-            foreach (var detection in detections)
-            {
-                // 使用检测ID作为唯一标识符
-                int detectionId = GetDetectionId(detection);
-                activeDetections[detectionId] = detection;
+
+            if (detections.Count != 0) {
+                // 处理新的检测结果
+                foreach (var detection in detections)
+                {
+                    // 使用检测ID作为唯一标识符
+                    int detectionId = GetDetectionId(detection);
+                    activeDetections[detectionId] = detection;
+                }
+                
+                // 更新可视化元素
+                UpdateSpriteVisualizations();
             }
-            
-            // 更新可视化元素
-            UpdateSpriteVisualizations();
         }
         catch (System.Exception e)
         {
@@ -366,9 +390,9 @@ public class SpriteVisualizer : MonoBehaviour
                 spriteObj.transform.localRotation = Quaternion.identity;
 
                 // 计算缩放比例，保持原始宽高比，但宽度与检测宽度匹配
-                float originalWidth = renderer.sprite.bounds.size.x;
-                float targetWidth = detection.projectionWidth;
-                float scale = targetWidth / originalWidth;
+                float originalHeight = renderer.sprite.bounds.size.y;
+                float targetHeight = detection.projectionHeight;
+                float scale = targetHeight / originalHeight;
                 
                 spriteObj.transform.localScale = new Vector3(scale, scale, scale);
                 // Debug.Log($"Sprite scale: {spriteObj.transform.localScale}");

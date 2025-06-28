@@ -29,7 +29,7 @@ public class Yolo : MonoBehaviour
     [SerializeField] private float confidenceThreshold = 0.6f;
     
     // 虚拟投影平面参数
-    [SerializeField] private float projectionPlaneWidth =  2.8f;    // 投影平面的宽度（米）
+    [SerializeField] private float projectionPlaneHeight = 5.0f;
     [SerializeField] private Vector2 projectionPlaneOffset = Vector2.zero; // 投影平面偏移（米）
     
     // 中心检测结果
@@ -53,6 +53,12 @@ public class Yolo : MonoBehaviour
     
     // 用于调试
     [SerializeField] private bool showDebugInfo = true;
+    
+    // 安全检查：检测状态恢复机制
+    private float detectionPausedTime = 0f;
+    [SerializeField] private float maxDetectionPauseTime = 10f; // 检测暂停的最大时间（秒）
+
+    private long frameCount = 0;
     
     void Start()
     {
@@ -94,11 +100,35 @@ public class Yolo : MonoBehaviour
         {
             ProcessWebCamFrame();
         }
+        
+        // 安全检查：如果isDetecting为false持续时间过长，自动重置
+        if (!DetectionData.isDetecting)
+        {
+            detectionPausedTime += Time.deltaTime;
+            if (detectionPausedTime >= maxDetectionPauseTime)
+            {
+                if (showDebugInfo)
+                {
+                    Debug.Log("检测状态已自动恢复（安全机制）");
+                }
+                DetectionData.isDetecting = true;
+                detectionPausedTime = 0f;
+            }
+        }
+        else
+        {
+            // 重置计时器
+            detectionPausedTime = 0f;
+        }
     }
 
     private void ProcessWebCamFrame()
     {
-        if (webCamTexture == null || !webCamTexture.isPlaying)
+        frameCount++;
+        if (frameCount % 3 == 0)
+            return;
+
+        if (webCamTexture == null || !webCamTexture.isPlaying || !DetectionData.isDetecting)
             return;
             
         if (showDebugInfo)
@@ -136,7 +166,11 @@ public class Yolo : MonoBehaviour
 
     private void OnCameraFrameReceived(ARCameraFrameEventArgs args)
     {
-        if (args.textures.Count < 2)
+        frameCount++;
+        if (frameCount % 3 == 0)
+            return;
+
+        if (args.textures.Count < 2 || !DetectionData.isDetecting)
             return;
 
         _yTexture = args.textures[0];
@@ -178,7 +212,6 @@ public class Yolo : MonoBehaviour
 
         worker.Schedule(inputTensor);
         Tensor outputTensor = worker.PeekOutput(0);
-        // worker.CopyOutput(0, ref outputTensor);
 
         ProcessOutput(outputTensor as Tensor<float>);
     }
@@ -247,13 +280,12 @@ public class Yolo : MonoBehaviour
             
             // 计算投影平面上的位置和尺寸
             detection.projectionPosition = MapToProjectionPlane(croppedCenterX, croppedCenterY);
-            detection.projectionWidth = CalculateProjectionWidth(width);
+            detection.projectionHeight = CalculateProjectionHeight(height);
             
             detections.Add(detection);
         }
-        
+
         List<DetectionData.PoseDetection> result = ApplyNMS(detections, 0.6f);
-        // List<DetectionData.PoseDetection> result = detections;
 
         // save latest detections and notify listeners
         latestDetections = result;
@@ -465,17 +497,17 @@ public class Yolo : MonoBehaviour
         float normalizedY = (imageY / 640.0f) * 2 - 1;
         
         // 计算投影平面上的位置，等比例放大
-        float planeX = normalizedX * (projectionPlaneWidth / 2.0f) + projectionPlaneOffset.x;
-        float planeY = normalizedY * (projectionPlaneWidth / 2.0f) + projectionPlaneOffset.y;
+        float planeX = normalizedX * (projectionPlaneHeight / 2.0f) + projectionPlaneOffset.x;
+        float planeY = normalizedY * (projectionPlaneHeight / 2.0f) + projectionPlaneOffset.y;
         
         // 返回相对于相机的偏移位置（不再转换为世界坐标）
         return new Vector2(planeX, planeY);
     }
     
-    // 计算投影平面上的宽度
-    private float CalculateProjectionWidth(float imageWidth)
+    // 计算投影平面上的高度
+    private float CalculateProjectionHeight(float imageHeight)
     {
-        // 将图像宽度转换为投影平面上的宽度
-        return imageWidth / 640.0f * projectionPlaneWidth;
+        // 将图像高度转换为投影平面上的高度
+        return imageHeight / 640.0f * projectionPlaneHeight;
     }
 }
