@@ -1,5 +1,5 @@
 using UnityEngine;
-using Unity.Sentis;
+using Unity.InferenceEngine;
 using UnityEngine.XR.ARFoundation;
 using System.Collections.Generic;
 using UnityEngine.UI;
@@ -152,7 +152,7 @@ public class Yolo : MonoBehaviour
 
         commandBuffer.Clear();
         commandBuffer.Blit(null, cropIntermediate, cropMaterial);
-        commandBuffer.ToTensor(cropIntermediate, inputTensor, _textureSettings);
+        TextureConverter.ToTensor(commandBuffer, cropIntermediate, inputTensor, _textureSettings);
         Graphics.ExecuteCommandBuffer(commandBuffer);
 
         // rawImage1.texture = cropIntermediate;
@@ -204,7 +204,7 @@ public class Yolo : MonoBehaviour
         commandBuffer.Clear();
         commandBuffer.Blit(null, rgbIntermediate, yCbCrMaterial);
         commandBuffer.Blit(rgbIntermediate, cropIntermediate, cropMaterial);
-        commandBuffer.ToTensor(cropIntermediate, inputTensor, _textureSettings);
+        TextureConverter.ToTensor(commandBuffer, cropIntermediate, inputTensor, _textureSettings);
         Graphics.ExecuteCommandBuffer(commandBuffer);
         
         // rawImage1.texture = rgbIntermediate;
