@@ -113,10 +113,10 @@ TextureImporter:
       name: pose7_0
       rect:
         serializedVersion: 2
-        x: 25
-        y: 28
-        width: 692
-        height: 1062
+        x: 0
+        y: 0
+        width: 958
+        height: 1053
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
@@ -125,8 +125,8 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: 0
       bones: []
-      spriteID: d8d2acb8852a54a8c94d1acf0884a512
-      internalID: 1190091181
+      spriteID: 32995e8c3f4ae469092f1eade4fe297e
+      internalID: -579362710
       vertices: []
       indices: 
       edges: []
@@ -135,7 +135,7 @@ TextureImporter:
     customData: 
     physicsShape: []
     bones: []
-    spriteID: 1d9cc9fd41d3c4b3da44ec1088eeb8be
+    spriteID: b383150724a6740dfbc9c13214789400
     internalID: 0
     vertices: []
     indices: 
@@ -145,7 +145,7 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      pose7_0: 1190091181
+      pose7_0: -579362710
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

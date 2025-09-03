@@ -27,6 +27,7 @@ public class Yolo : MonoBehaviour
     private static TextureTransform _textureSettings;
 
     [SerializeField] private float confidenceThreshold = 0.6f;
+    [SerializeField] private float conf12 = 0.35f;
     
     // 虚拟投影平面参数
     [SerializeField] private float projectionPlaneHeight = 5.0f;
@@ -53,10 +54,6 @@ public class Yolo : MonoBehaviour
     
     // 用于调试
     [SerializeField] private bool showDebugInfo = true;
-    
-    // 安全检查：检测状态恢复机制
-    private float detectionPausedTime = 0f;
-    [SerializeField] private float maxDetectionPauseTime = 10f; // 检测暂停的最大时间（秒）
 
     private long frameCount = 0;
     
@@ -100,26 +97,6 @@ public class Yolo : MonoBehaviour
         {
             ProcessWebCamFrame();
         }
-        
-        // 安全检查：如果isDetecting为false持续时间过长，自动重置
-        if (!DetectionData.isDetecting)
-        {
-            detectionPausedTime += Time.deltaTime;
-            if (detectionPausedTime >= maxDetectionPauseTime)
-            {
-                if (showDebugInfo)
-                {
-                    Debug.Log("检测状态已自动恢复（安全机制）");
-                }
-                DetectionData.isDetecting = true;
-                detectionPausedTime = 0f;
-            }
-        }
-        else
-        {
-            // 重置计时器
-            detectionPausedTime = 0f;
-        }
     }
 
     private void ProcessWebCamFrame()
@@ -130,11 +107,6 @@ public class Yolo : MonoBehaviour
 
         if (webCamTexture == null || !webCamTexture.isPlaying || !DetectionData.isDetecting)
             return;
-            
-        if (showDebugInfo)
-        {
-            Debug.Log($"WebCamTexture Size: {webCamTexture.width}x{webCamTexture.height}");
-        }
 
         if (cropIntermediate == null) {
             int a = Mathf.Min(webCamTexture.width, webCamTexture.height);
@@ -221,6 +193,7 @@ public class Yolo : MonoBehaviour
         if (output == null) return;
         
         List<DetectionData.PoseDetection> detections = new List<DetectionData.PoseDetection>();
+        detections.Clear();
         
         TensorShape shape = output.shape;
         
@@ -250,7 +223,7 @@ public class Yolo : MonoBehaviour
             // Class ID
             int maxClassId = 0;
             float maxProb = transposedData[baseIndex];
-            for (int j = 1; j < 7; j++)
+            for (int j = 1; j < 20; j++)
             {
                 float prob = transposedData[baseIndex + j];
                 if (prob > maxProb)
@@ -260,7 +233,7 @@ public class Yolo : MonoBehaviour
                 }
             }
             
-            if (maxProb < confidenceThreshold)
+            if (maxProb < confidenceThreshold || ((maxClassId == 1 || maxClassId == 2) && maxProb < conf12))
                 continue;
             if (maxProb > 1)
                 Debug.LogError("maxProb > 1");
@@ -270,7 +243,8 @@ public class Yolo : MonoBehaviour
             float croppedCenterY = (640 - transposedData[baseIndex - 3]);
             float width = transposedData[baseIndex - 2];
             float height = transposedData[baseIndex - 1];
-            // Debug.Log($"BBox in YOLO: X: {croppedCenterX}, Y: {croppedCenterY}, width: {width}, height: {height}");
+            if (showDebugInfo)
+                Debug.Log($"BBox in YOLO: X: {croppedCenterX}, Y: {croppedCenterY}, width: {width}, height: {height}");
 
             float bboxX = croppedCenterX - width / 2;
             float bboxY = croppedCenterY - height / 2;
@@ -327,6 +301,7 @@ public class Yolo : MonoBehaviour
         detections.Sort((a, b) => b.maxClassProbability.CompareTo(a.maxClassProbability));
         
         List<DetectionData.PoseDetection> result = new List<DetectionData.PoseDetection>();
+        result.Clear();
         List<bool> isSupressed = new List<bool>(new bool[detections.Count]); // False
         
         for (int i = 0; i < detections.Count; i++)

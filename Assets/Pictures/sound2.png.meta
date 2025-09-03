@@ -115,8 +115,8 @@ TextureImporter:
         serializedVersion: 2
         x: 0
         y: 0
-        width: 1171
-        height: 294
+        width: 1515
+        height: 373
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
@@ -125,8 +125,8 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: 0
       bones: []
-      spriteID: 19b216d7a07a840e9adc6e5c1d6b9650
-      internalID: 528503307
+      spriteID: a593bb838db744f2a91b80f905cb8771
+      internalID: -2007710680
       vertices: []
       indices: 
       edges: []
@@ -135,7 +135,7 @@ TextureImporter:
     customData: 
     physicsShape: []
     bones: []
-    spriteID: 09986604b48d142538676dab49fe0ae9
+    spriteID: 2612f7676652041c0b1e1c5f495b46a1
     internalID: 0
     vertices: []
     indices: 
@@ -145,7 +145,7 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      sound2_0: 528503307
+      sound2_0: -2007710680
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

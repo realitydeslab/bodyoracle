@@ -1,0 +1,31 @@
+#data.yaml
+
+path: /content/drive/MyDrive/BodyOracle_Yolo/pose_dataset3
+train: images/train
+val: images/valid
+test: images/test
+
+kpt_shape: [17, 3]  # 17 keypoints, each with (x, y, visibility)
+flip_idx: [0, 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15]
+
+names:
+    0: pose1
+    1: pose2
+    2: pose3
+    3: pose4
+    4: pose5
+    5: pose6
+    6: pose7
+    7: pose8
+    8: pose9
+    9: pose10
+    10: pose11
+    11: pose12
+    12: pose13
+    13: pose14
+    14: pose15
+    15: pose16
+    16: pose17
+    17: pose18
+    18: pose19
+    19: pose20

@@ -399,14 +399,29 @@ MonoBehaviour:
   mainCameraTransform: {fileID: 1096282415}
   centerEyePoseTransform: {fileID: 869860590}
   constraintObject: {fileID: 109934369}
+  recordButton: {fileID: 2094178349}
+  recordButtonText: {fileID: 1768740739}
   classSprites:
-  - {fileID: -1949182802, guid: 62ab85ec826674c9597d82362ca1d899, type: 3}
-  - {fileID: -736079927, guid: 9fc5c0602efa44303ba9fb489d191e0d, type: 3}
-  - {fileID: 1003581564, guid: ccb3fba32696b417db0c45a9c44ae606, type: 3}
-  - {fileID: 115280750, guid: 39dbcb87e49204d4da51eac78b5e17ce, type: 3}
-  - {fileID: 816255019, guid: b0d0c37fe58554059855b96201a2b007, type: 3}
-  - {fileID: -1702076615, guid: f41429b584c7c4814aad3555b185ff6d, type: 3}
-  - {fileID: 1190091181, guid: 19ea93d505636438fad1c78ec96d0b8d, type: 3}
+  - {fileID: 771197180, guid: 62ab85ec826674c9597d82362ca1d899, type: 3}
+  - {fileID: -1058381051, guid: 9fc5c0602efa44303ba9fb489d191e0d, type: 3}
+  - {fileID: -610083081, guid: ccb3fba32696b417db0c45a9c44ae606, type: 3}
+  - {fileID: 764991506, guid: 39dbcb87e49204d4da51eac78b5e17ce, type: 3}
+  - {fileID: -786766757, guid: b0d0c37fe58554059855b96201a2b007, type: 3}
+  - {fileID: 787836066, guid: f41429b584c7c4814aad3555b185ff6d, type: 3}
+  - {fileID: -579362710, guid: 19ea93d505636438fad1c78ec96d0b8d, type: 3}
+  - {fileID: -414882948, guid: 89a94940e5f854fd6873c0df69eea2ec, type: 3}
+  - {fileID: 1837658517, guid: eee7aa34d828e42f480634151a741314, type: 3}
+  - {fileID: -468766379, guid: 2076c80e976494804aabea549f47a14d, type: 3}
+  - {fileID: 583563086, guid: 16a31c8c3648d470facd393b9c9c4b6f, type: 3}
+  - {fileID: -294742684, guid: daf0456132e9f4dc4aa0344e3f63a8ac, type: 3}
+  - {fileID: -674699360, guid: 44ad1ab4c556e4334a9997b39f518071, type: 3}
+  - {fileID: -703653736, guid: 69cf2764c924042beb050bdb563161e9, type: 3}
+  - {fileID: -1064015046, guid: bc236bae18b4c4cf78f1c6e536af2500, type: 3}
+  - {fileID: -1157759705, guid: 64dd09e3c9c0c4b8dbfea4e13c7172fd, type: 3}
+  - {fileID: -576032288, guid: 7c5bfd27d16ba42768faed3f32b33c50, type: 3}
+  - {fileID: -1599863292, guid: 81ab553c44aff417f8433dfa8d42ef96, type: 3}
+  - {fileID: -1043220602, guid: 79e67edc558564f699ad82914f978fbe, type: 3}
+  - {fileID: 789905299, guid: e3f5636e4833245259011761e24c78e4, type: 3}
   classNames:
   - pose1
   - pose2
@@ -415,30 +430,73 @@ MonoBehaviour:
   - pose5
   - pose6
   - pose7
+  - pose8
+  - pose9
+  - pose10
+  - pose11
+  - pose12
+  - pose13
+  - pose14
+  - pose15
+  - pose16
+  - pose17
+  - pose18
+  - pose19
+  - pose20
   soundSprites:
-  - {fileID: 115660497, guid: ff16afa303be54fa388ea830077a863a, type: 3}
-  - {fileID: 528503307, guid: 7dab11523b7bb4ea496b3846ed051f93, type: 3}
-  - {fileID: 241029645, guid: 9b423050242bf401a9cab2a8ce873d02, type: 3}
-  - {fileID: 2082809168, guid: c4044beae07dc4fc0a8c6fe169deeefa, type: 3}
-  - {fileID: 1083581193, guid: bb882253724c744d1a14be0b2b068567, type: 3}
-  - {fileID: 1579744897, guid: c32f1db4cf40944d3bd7fa894ae2d9fb, type: 3}
-  - {fileID: -1242325710, guid: 974c51d27e50f4871ba1ead923fe7dbc, type: 3}
+  - {fileID: 820908430, guid: ff16afa303be54fa388ea830077a863a, type: 3}
+  - {fileID: -2007710680, guid: 7dab11523b7bb4ea496b3846ed051f93, type: 3}
+  - {fileID: 1190402707, guid: 9b423050242bf401a9cab2a8ce873d02, type: 3}
+  - {fileID: 1151396392, guid: c4044beae07dc4fc0a8c6fe169deeefa, type: 3}
+  - {fileID: -1775565423, guid: bb882253724c744d1a14be0b2b068567, type: 3}
+  - {fileID: -1305798321, guid: c32f1db4cf40944d3bd7fa894ae2d9fb, type: 3}
+  - {fileID: 834961556, guid: 974c51d27e50f4871ba1ead923fe7dbc, type: 3}
+  - {fileID: -1146895897, guid: 9390bb9b6d8ac4a9a8e6a4940667951c, type: 3}
+  - {fileID: -1685030000, guid: e92b86861fea04826bcaac74bddbb81d, type: 3}
+  - {fileID: -2085559382, guid: c83e4c3e1a48d4e2ea413b39e2b68bda, type: 3}
+  - {fileID: 1613450981, guid: 10f6961dba20b440bb33247517fcf19d, type: 3}
+  - {fileID: -104369175, guid: 1d74fe70945e04a5d8728aa6c53b0330, type: 3}
+  - {fileID: -1718626734, guid: 31ffa07d256974498b1d03bc90066d02, type: 3}
+  - {fileID: 716611413, guid: 012a94d6a7cc44652b85d9f33ce1d8ec, type: 3}
+  - {fileID: -1686889232, guid: c3cc5d78fdac642c2bf3e60895a3369a, type: 3}
+  - {fileID: 1279893366, guid: 2c2a4409dd2de4e06801a5294ec2c5b4, type: 3}
+  - {fileID: -1522050407, guid: e5f05840fef864f87875f935edb57442, type: 3}
+  - {fileID: -2081127475, guid: 402949db85e5c4ff1b473c0dfdb4d18d, type: 3}
+  - {fileID: -1493666513, guid: 1b8eff904004d40d197f0a466815d4ae, type: 3}
+  - {fileID: -2085559382, guid: c83e4c3e1a48d4e2ea413b39e2b68bda, type: 3}
   soundClips:
-  - {fileID: 8300000, guid: b5a12e44536d443aca2922acfd14c8b2, type: 3}
-  - {fileID: 8300000, guid: df1d883b896c8491d8ea41393c7138d2, type: 3}
-  - {fileID: 8300000, guid: efe7c04c4ff684f2e8b6ace2e463fdc9, type: 3}
-  - {fileID: 8300000, guid: 5b7ce2ec74987446ca95f12844ac23b1, type: 3}
-  - {fileID: 8300000, guid: 22aef832610e94bbd852b5a6afb54170, type: 3}
-  - {fileID: 8300000, guid: 75df2eec9c5a04173af65a92a409f215, type: 3}
-  - {fileID: 8300000, guid: f5155a9e91f6a42b3a46626fbe00df34, type: 3}
+  - {fileID: 8300000, guid: ce362a796c7194c5e9393807033b5e6b, type: 3}
+  - {fileID: 8300000, guid: db5e98497f35f4fa5b2c1ccec510363f, type: 3}
+  - {fileID: 8300000, guid: c7814de129c634c49aa65d21dbd5dfd1, type: 3}
+  - {fileID: 8300000, guid: 7104222e5df344ae3b21730963f99dd0, type: 3}
+  - {fileID: 8300000, guid: ac7943b71e4ad4659a9331f58cf4954b, type: 3}
+  - {fileID: 8300000, guid: 824c87afb15734d918e348de591a634c, type: 3}
+  - {fileID: 8300000, guid: 6974b5242046f48479dc8b016324ef21, type: 3}
+  - {fileID: 8300000, guid: d7bc33264b88941e6a0c819047488172, type: 3}
+  - {fileID: 8300000, guid: 979129e2c05ee43d99557804cab6d60d, type: 3}
+  - {fileID: 8300000, guid: 908b9d613d30447619c4623e012ed08f, type: 3}
+  - {fileID: 8300000, guid: c4e4aefa90b2d4b04bf22f32cadbd672, type: 3}
+  - {fileID: 8300000, guid: 481dce64ddf9c4650963b24db2b52a01, type: 3}
+  - {fileID: 8300000, guid: 41e5f427faa6a4b09b0eccdb1d5ca4ad, type: 3}
+  - {fileID: 8300000, guid: 1c3fca463a77748fb8b52cb14fbe0875, type: 3}
+  - {fileID: 8300000, guid: a2f056f2d3bc54f0fa58ecd8471d1a0e, type: 3}
+  - {fileID: 8300000, guid: 9d71f4ba4ad6d4177bcb98d7dea0b07c, type: 3}
+  - {fileID: 8300000, guid: 83bdaff8aac06484a909fd8fda085a2a, type: 3}
+  - {fileID: 8300000, guid: 5cc3a703b1945481181127f8db476b44, type: 3}
+  - {fileID: 8300000, guid: ffd19ebd8123a434cabe628ba908b908, type: 3}
+  - {fileID: 8300000, guid: 908b9d613d30447619c4623e012ed08f, type: 3}
   panel_mono: {fileID: 1270826679}
   panel_stereo: {fileID: 491083926}
   soundSpriteObject_mono: {fileID: 1135276938}
   soundSpriteObject_left: {fileID: 753861934}
   soundSpriteObject_right: {fileID: 1700878688}
   triggerButton: {fileID: 1966843899}
-  showDebugInfo: 0
+  showDebugInfo: 1
   projectionPlaneDistance: 9
+  enableMovementMonitoring: 1
+  staticThreshold: 30
+  movementSensitivity: 0.1
+  checkInterval: 1
   fps_text: {fileID: 1301584290}
   refreshrate: 1
 --- !u!1 &295186154
@@ -975,7 +1033,7 @@ SpriteRenderer:
   m_Size: {x: 1, y: 1}
   m_AdaptiveModeThreshold: 0.5
   m_SpriteTileMode: 0
-  m_WasSpriteAssigned: 1
+  m_WasSpriteAssigned: 0
   m_MaskInteraction: 0
   m_SpriteSortPoint: 0
 --- !u!4 &573502766
@@ -2522,16 +2580,16 @@ MonoBehaviour:
   CenterEyePose: {fileID: 869860589}
   arCameraManager: {fileID: 0}
   m_HoloKitCameraManager: {fileID: 814676631}
-  modelAsset: {fileID: 5022602860645237092, guid: 4b40fe0d41aee447fa6a316080485662, type: 3}
+  modelAsset: {fileID: 5022602860645237092, guid: f71e0caaee99448eda9f804b60e26507, type: 3}
   rawImage1: {fileID: 1919249581}
   rawImage2: {fileID: 842306073}
-  confidenceThreshold: 0.8
+  confidenceThreshold: 0.55
+  conf12: 0.4
   projectionPlaneHeight: 10
   projectionPlaneOffset: {x: 0, y: 0}
   yCbCrMaterial: {fileID: 2100000, guid: 3f103f6c0d8f3445581515a428a75ce6, type: 2}
   cropMaterial: {fileID: 2100000, guid: d6e86373fe883451eb39a13271112241, type: 2}
-  showDebugInfo: 0
-  maxDetectionPauseTime: 10
+  showDebugInfo: 1
 --- !u!4 &1458875842
 Transform:
   m_ObjectHideFlags: 0
@@ -3689,6 +3747,18 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
+      - m_Target: {fileID: 285910567}
+        m_TargetAssemblyTypeName: SpriteVisualizer, Assembly-CSharp
+        m_MethodName: OnRecordButtonClicked
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
       - m_Target: {fileID: 698341742}
         m_TargetAssemblyTypeName: HoloKit.UI.HoloKitDefaultUICanvas, HoloKit
         m_MethodName: ToggleRecording
