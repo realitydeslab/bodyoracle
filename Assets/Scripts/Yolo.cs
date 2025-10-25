@@ -26,8 +26,9 @@ public class Yolo : MonoBehaviour
 
     private static TextureTransform _textureSettings;
 
-    [SerializeField] private float confidenceThreshold = 0.6f;
-    [SerializeField] private float conf12 = 0.35f;
+    [SerializeField] private float confidenceThreshold = 0.78f;
+    [SerializeField] private float conf_lower = 0.56f;
+    private List<int> class_lowerconf = new List<int> {0,1,4,7,14,16,17};
     
     // 虚拟投影平面参数
     [SerializeField] private float projectionPlaneHeight = 5.0f;
@@ -233,8 +234,15 @@ public class Yolo : MonoBehaviour
                 }
             }
             
-            if (maxProb < confidenceThreshold || ((maxClassId == 1 || maxClassId == 2) && maxProb < conf12))
+            if (maxProb < confidenceThreshold)
                 continue;
+            bool flag_lower = false;
+            for (int j = 0; j < class_lowerconf.Count; j++) 
+                if (maxClassId == class_lowerconf[j]) 
+                    flag_lower = true;
+            if (flag_lower && maxProb < conf_lower)
+                continue;
+        
             if (maxProb > 1)
                 Debug.LogError("maxProb > 1");
 

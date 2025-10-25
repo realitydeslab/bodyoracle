@@ -2580,11 +2580,11 @@ MonoBehaviour:
   CenterEyePose: {fileID: 869860589}
   arCameraManager: {fileID: 0}
   m_HoloKitCameraManager: {fileID: 814676631}
-  modelAsset: {fileID: 5022602860645237092, guid: f71e0caaee99448eda9f804b60e26507, type: 3}
+  modelAsset: {fileID: 5022602860645237092, guid: 762f61325f16a4b1ab7163e259eab75c, type: 3}
   rawImage1: {fileID: 1919249581}
   rawImage2: {fileID: 842306073}
-  confidenceThreshold: 0.55
-  conf12: 0.4
+  confidenceThreshold: 0.78
+  conf_lower: 0.5
   projectionPlaneHeight: 10
   projectionPlaneOffset: {x: 0, y: 0}
   yCbCrMaterial: {fileID: 2100000, guid: 3f103f6c0d8f3445581515a428a75ce6, type: 2}
