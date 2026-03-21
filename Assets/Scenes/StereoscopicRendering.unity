@@ -2583,8 +2583,9 @@ MonoBehaviour:
   modelAsset: {fileID: 5022602860645237092, guid: 762f61325f16a4b1ab7163e259eab75c, type: 3}
   rawImage1: {fileID: 1919249581}
   rawImage2: {fileID: 842306073}
-  confidenceThreshold: 0.78
-  conf_lower: 0.5
+  confidenceThreshold: 0.6
+  conf_lower: 0.35
+  conf_human: 0.1
   projectionPlaneHeight: 10
   projectionPlaneOffset: {x: 0, y: 0}
   yCbCrMaterial: {fileID: 2100000, guid: 3f103f6c0d8f3445581515a428a75ce6, type: 2}

@@ -26,8 +26,9 @@ public class Yolo : MonoBehaviour
 
     private static TextureTransform _textureSettings;
 
-    [SerializeField] private float confidenceThreshold = 0.78f;
-    [SerializeField] private float conf_lower = 0.56f;
+    [SerializeField] private float confidenceThreshold = 0.6f;
+    [SerializeField] private float conf_lower = 0.35f;
+    [SerializeField] private float conf_human = 0.1f;
     private List<int> class_lowerconf = new List<int> {0,1,4,7,14,16,17};
     
     // 虚拟投影平面参数
@@ -234,17 +235,19 @@ public class Yolo : MonoBehaviour
                 }
             }
             
-            if (maxProb < confidenceThreshold)
-                continue;
-            bool flag_lower = false;
-            for (int j = 0; j < class_lowerconf.Count; j++) 
-                if (maxClassId == class_lowerconf[j]) 
-                    flag_lower = true;
-            if (flag_lower && maxProb < conf_lower)
-                continue;
-        
             if (maxProb > 1)
                 Debug.LogError("maxProb > 1");
+
+            if (maxProb < conf_human)
+                continue;
+
+            if (class_lowerconf.Contains(maxClassId)) {
+                if (maxProb < conf_lower)
+                    maxClassId = 18;
+            } else {
+                if (maxProb < confidenceThreshold)
+                    maxClassId = 18;
+            }
 
             // Bounding Box in cropped image (640x640)
             float croppedCenterX = transposedData[baseIndex - 4];
