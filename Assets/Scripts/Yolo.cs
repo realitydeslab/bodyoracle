@@ -1,499 +1,355 @@
-using UnityEngine;
-using Unity.InferenceEngine;
-using UnityEngine.XR.ARFoundation;
-using System.Collections.Generic;
-using UnityEngine.UI;
-using System.Collections;
 using System;
-using UnityEngine.XR.ARSubsystems;
-using UnityEngine.Rendering;
-using System.IO;
+using System.Collections;
+#if UNITY_IOS || UNITY_EDITOR
 using HoloKit;
+#endif
+using Unity.InferenceEngine;
+using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.UI;
+using UnityEngine.Video;
+using UnityEngine.XR.ARFoundation;
 
+/// <summary>GPU camera conversion, inference and postprocessing. No per-frame readback.</summary>
 public class Yolo : MonoBehaviour
 {
     public GameObject CenterEyePose;
-    [SerializeField] private ARCameraManager arCameraManager;
-    [SerializeField] private HoloKitCameraManager m_HoloKitCameraManager;
-    [SerializeField] private ModelAsset modelAsset;
-    private Model runtimeModel;
-    private Worker worker;
-    
-    private WebCamTexture webCamTexture;
-    private bool useARCamera = false;
-    [SerializeField] private RawImage rawImage1;
-    [SerializeField] private RawImage rawImage2;
-
-    private static TextureTransform _textureSettings;
-
-    [SerializeField] private float confidenceThreshold = 0.6f;
-    [SerializeField] private float conf_lower = 0.35f;
-    [SerializeField] private float conf_human = 0.1f;
-    private List<int> class_lowerconf = new List<int> {0,1,4,7,14,16,17};
-    
-    // 虚拟投影平面参数
-    [SerializeField] private float projectionPlaneHeight = 5.0f;
-    [SerializeField] private Vector2 projectionPlaneOffset = Vector2.zero; // 投影平面偏移（米）
-    
-    // 中心检测结果
-    private DetectionData.PoseDetection centerDetection;
-    private bool hasCenterDetection = false;
-    
-    // event system for detection results
-    public event Action<List<DetectionData.PoseDetection>> OnDetectionsUpdated;
-    private List<DetectionData.PoseDetection> latestDetections = new List<DetectionData.PoseDetection>();
-    
-    // YCbCr转换相关
-    private Texture2D _yTexture;
-    private Texture2D _cbCrTexture;
-    private Texture _mainTexture;
-    [SerializeField] private Material yCbCrMaterial;
-    [SerializeField] private Material cropMaterial;
-    private RenderTexture rgbIntermediate;
-    private RenderTexture cropIntermediate;
-    private CommandBuffer commandBuffer;
-    private Tensor<float> inputTensor;
-    
-    // 用于调试
-    [SerializeField] private bool showDebugInfo = true;
-
-    private long frameCount = 0;
-    
-    void Start()
-    {
-        runtimeModel = ModelLoader.Load(modelAsset);
-        worker = new Worker(runtimeModel, BackendType.GPUCompute);
-
-        _textureSettings = new TextureTransform();
-        _textureSettings.SetDimensions(640, 640);
-        _textureSettings.SetTensorLayout(TensorLayout.NCHW);
-
-        commandBuffer = new CommandBuffer();
-        commandBuffer.name = "YCbCrToTensorConversion";
-        
-        // 创建输入Tensor
-        inputTensor = new Tensor<float>(new TensorShape(1, 3, 640, 640));
-
-#if UNITY_IOS && !UNITY_EDITOR
-        // use ARCameraManager on iOS
-        useARCamera = true;
-        arCameraManager = FindAnyObjectByType<ARCameraManager>();
-        arCameraManager.frameReceived += OnCameraFrameReceived;
-        // _textureSettings.SetChannelSwizzle(1, 2, 3, 0);
-#else
-        // use WebCamTexture on other platforms
-        useARCamera = false;
-        WebCamDevice[] devices = WebCamTexture.devices;
-        webCamTexture = new WebCamTexture(devices[0].name);
-        webCamTexture.requestedFPS = 30; // 如果帧率太高，mac里unity运行会卡
-        webCamTexture.Play();
+    [SerializeField] ARCameraManager arCameraManager;
+#if UNITY_IOS || UNITY_EDITOR
+    [SerializeField] HoloKitCameraManager m_HoloKitCameraManager;
 #endif
-        
-        Application.quitting += OnApplicationQuit;
+    [SerializeField] ModelAsset modelAsset;
+    [SerializeField] RawImage rawImage1;
+    [SerializeField] RawImage rawImage2;
+    [SerializeField] Material yCbCrMaterial;
+    [SerializeField] Material cropMaterial;
+    [SerializeField] float confidenceThreshold = 0.6f;
+    [SerializeField] float conf_lower = 0.35f;
+    // Anything above this is drawn as a character. Measured on the 94-image grouped test split, a
+    // true pose scores 0.96 median and 0.69 at the 5th percentile, so 0.5 keeps real poses while
+    // rejecting the weak activations that hands and clutter produce.
+    [SerializeField] float conf_human = 0.5f;
+    [SerializeField] float projectionPlaneHeight = 5;
+    [SerializeField] Vector2 projectionPlaneOffset = Vector2.zero;
+    [SerializeField, Range(0, 1)] float iouThreshold = 0.6f;
+    [SerializeField, Min(1)] int maxDetections = 128;
+    [Header("Temporal stabilisation")]
+    [SerializeField] bool stabilizeDetections = true;
+    [SerializeField, Min(1)] int trackMinHits = 3;
+    [SerializeField, Min(0)] int trackMaxMisses = 5;
+    [SerializeField, Range(0, 1)] float trackMatchIou = 0.3f;
+    [SerializeField, Range(0, 1)] float trackSmoothing = 0.6f;
+    [SerializeField, Range(0, 1)] float trackClassScore = 0.6f;
+    [SerializeField] bool showDebugInfo;
+    [SerializeField] string preferredWebcam;
+    [SerializeField] VideoPlayer videoSource;
+
+    Worker worker;
+    Tensor<float> inputTensor;
+    TextureTransform textureSettings;
+    CommandBuffer commandBuffer;
+    WebCamTexture webCamTexture;
+    RenderTexture rgbIntermediate, cropIntermediate;
+    Material runtimeYcbcr, runtimeCrop;
+    GpuYoloPostprocessor postprocessor;
+    GraphicsFence inferenceFence;
+    bool hasFence, useARCamera, readbackPending, cleanupRequested;
+    public bool HasFrame { get; private set; }
+    public GpuYoloPostprocessor GpuResults => postprocessor;
+    public float ProjectionPlaneHeight => projectionPlaneHeight;
+    public Vector2 ProjectionPlaneOffset => projectionPlaneOffset;
+    public Texture CameraPreview => cropIntermediate;
+    public string CameraStatus { get; private set; } = "Starting camera…";
+    public string ActiveWebcam => webCamTexture != null ? webCamTexture.deviceName : string.Empty;
+    public bool IsVideoReplay => videoSource != null;
+    public long VideoFrame => videoSource != null ? videoSource.frame : -1;
+    public ulong ProcessedFrames { get; private set; }
+    StabilizerSettings Stabilizer => new StabilizerSettings
+    {
+        enabled = stabilizeDetections,
+        minHits = trackMinHits,
+        maxMisses = trackMaxMisses,
+        matchIou = trackMatchIou,
+        smoothing = trackSmoothing,
+        classScore = trackClassScore,
+    };
+    public bool IsWaitingForGpu => hasFence && !inferenceFence.passed;
+    long lastVideoFrame = -1;
+
+    IEnumerator Start()
+    {
+#if !UNITY_IOS || UNITY_EDITOR
+        if (!IsVideoReplay && !Application.HasUserAuthorization(UserAuthorization.WebCam))
+        {
+            CameraStatus = "Allow camera access to recognize your poses.";
+            yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
+        }
+        if (!IsVideoReplay && !Application.HasUserAuthorization(UserAuthorization.WebCam))
+        {
+            CameraStatus = "Camera access denied. Enable it in System Settings → Privacy & Security → Camera, then restart.";
+            yield break;
+        }
+#endif
+        Initialize();
+        yield break;
     }
+
+    void Initialize()
+    {
+        try
+        {
+            if (!SystemInfo.supportsComputeShaders || !SystemInfo.supportsInstancing || !SystemInfo.supportsAsyncGPUReadback)
+                throw new NotSupportedException("Body Oracle requires GPU compute, instancing and asynchronous GPU readback.");
+            if (modelAsset == null || cropMaterial == null)
+                throw new InvalidOperationException("Assign the YOLO model and crop material.");
+            worker = new Worker(BodyOracleModel.Load(modelAsset), BackendType.GPUCompute);
+            inputTensor = new Tensor<float>(new TensorShape(1, 3, 640, 640));
+            textureSettings = new TextureTransform().SetTensorLayout(TensorLayout.NCHW);
+            commandBuffer = new CommandBuffer { name = "Body Oracle GPU preprocessing" };
+            runtimeCrop = new Material(cropMaterial);
+            postprocessor = new GpuYoloPostprocessor(maxDetections);
+            if (IsVideoReplay)
+            {
+                videoSource.playOnAwake = false;
+                videoSource.renderMode = VideoRenderMode.APIOnly;
+                videoSource.audioOutputMode = VideoAudioOutputMode.None;
+                videoSource.timeUpdateMode = VideoTimeUpdateMode.UnscaledGameTime;
+                videoSource.isLooping = true;
+                videoSource.prepareCompleted += OnVideoPrepared;
+                videoSource.errorReceived += OnVideoError;
+                SelectVideo(videoSource.url);
+                return;
+            }
+#if UNITY_IOS && !UNITY_EDITOR
+            useARCamera = true;
+            if (arCameraManager == null) arCameraManager = FindAnyObjectByType<ARCameraManager>();
+            if (arCameraManager == null || yCbCrMaterial == null)
+                throw new InvalidOperationException("AR camera and YCbCr material are required on iOS.");
+            runtimeYcbcr = new Material(yCbCrMaterial);
+            arCameraManager.frameReceived += OnCameraFrameReceived;
+#else
+            if (WebCamTexture.devices.Length == 0)
+            {
+                CameraStatus = "No webcam found. Connect a camera and restart.";
+                Debug.LogWarning("No webcam found. Connect a camera to run Body Oracle.", this);
+                return;
+            }
+            var devices = WebCamTexture.devices;
+            int index = Array.FindIndex(devices, device => device.name == preferredWebcam);
+            SelectWebcam(index < 0 ? 0 : index);
+#endif
+        }
+        catch (Exception exception)
+        {
+            Debug.LogException(exception, this);
+            CameraStatus = "Recognition could not start. See the application log.";
+            enabled = false;
+            CleanupResources();
+        }
+    }
+
+    public void SelectWebcam(int index)
+    {
+        if (useARCamera || IsVideoReplay || worker == null) return;
+        var devices = WebCamTexture.devices;
+        if (index < 0 || index >= devices.Length) return;
+        if (webCamTexture != null) { webCamTexture.Stop(); Destroy(webCamTexture); }
+        HasFrame = false;
+        webCamTexture = new WebCamTexture(devices[index].name, 1280, 720, 30);
+        CameraStatus = "Opening " + devices[index].name + "…";
+        webCamTexture.Play();
+    }
+
+    bool CanProcessFrame => isActiveAndEnabled && worker != null && DetectionData.isDetecting &&
+        !readbackPending && (!hasFence || inferenceFence.passed);
 
     void Update()
     {
-        // if using WebCamTexture, process image Here
-        if (!useARCamera && webCamTexture.didUpdateThisFrame)
+        if (IsVideoReplay)
         {
-            ProcessWebCamFrame();
+            // A real camera keeps producing frames while audio selection freezes
+            // inference. Keep replay streaming too, avoiding AVPlayer pause/resume
+            // interaction with the iOS audio session.
+            if (CanProcessFrame && videoSource.isPrepared && videoSource.texture != null &&
+                videoSource.frame >= 0 && videoSource.frame != lastVideoFrame)
+            {
+                lastVideoFrame = videoSource.frame;
+                ProcessRgbFrame(videoSource.texture, 0, false);
+                CameraStatus = "Video replay: " + System.IO.Path.GetFileName(videoSource.url);
+            }
+            return;
         }
+        if (!useARCamera && webCamTexture != null && webCamTexture.isPlaying &&
+            webCamTexture.didUpdateThisFrame && CanProcessFrame)
+            ProcessWebCamFrame();
     }
 
-    private void ProcessWebCamFrame()
+    void EnsureTextures(int width, int height, bool needsRgb)
     {
-        frameCount++;
-        if (frameCount % 3 == 0)
-            return;
-
-        if (webCamTexture == null || !webCamTexture.isPlaying || !DetectionData.isDetecting)
-            return;
-
-        if (cropIntermediate == null) {
-            int a = Mathf.Min(webCamTexture.width, webCamTexture.height);
-            cropIntermediate = new RenderTexture(a, a, 0, RenderTextureFormat.ARGB32);
-            cropIntermediate.enableRandomWrite = true;
-            cropIntermediate.filterMode = FilterMode.Trilinear;
+        if (cropIntermediate == null)
+        {
+            // Crop and resize in a single GPU blit, at the model's actual input size.
+            cropIntermediate = new RenderTexture(640, 640, 0, RenderTextureFormat.ARGB32)
+                { name = "Body Oracle model input", filterMode = FilterMode.Bilinear };
             cropIntermediate.Create();
         }
-
-        float aspectRatio = webCamTexture.width / webCamTexture.height;
-        _mainTexture = webCamTexture;
-        cropMaterial.SetTexture("_MainTex", _mainTexture);
-        cropMaterial.SetFloat("_AspectRatio", aspectRatio);
-        cropMaterial.SetFloat("_Rotate", 0.0f);
-
-        commandBuffer.Clear();
-        commandBuffer.Blit(null, cropIntermediate, cropMaterial);
-        TextureConverter.ToTensor(commandBuffer, cropIntermediate, inputTensor, _textureSettings);
-        Graphics.ExecuteCommandBuffer(commandBuffer);
-
-        // rawImage1.texture = cropIntermediate;
-        // rawImage2.texture = TextureConverter.ToTexture(inputTensor);
-
-        worker.Schedule(inputTensor);
-        Tensor outputTensor = worker.PeekOutput(0);
-        
-        ProcessOutput(outputTensor as Tensor<float>);
-    }
-
-    private void OnCameraFrameReceived(ARCameraFrameEventArgs args)
-    {
-        frameCount++;
-        if (frameCount % 3 == 0)
-            return;
-
-        if (args.textures.Count < 2 || !DetectionData.isDetecting)
-            return;
-
-        _yTexture = args.textures[0];
-        _cbCrTexture = args.textures[1];
-        float aspectRatio = _yTexture.width / _yTexture.height;
-
-        if (rgbIntermediate == null) {
-            rgbIntermediate = new RenderTexture(_yTexture.width, _yTexture.height, 0, RenderTextureFormat.ARGB32);
-            rgbIntermediate.enableRandomWrite = true;
-            rgbIntermediate.filterMode = FilterMode.Trilinear;
+        if (needsRgb && (rgbIntermediate == null || rgbIntermediate.width != width || rgbIntermediate.height != height))
+        {
+            ReleaseTexture(ref rgbIntermediate);
+            rgbIntermediate = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32)
+                { name = "Body Oracle camera RGB", filterMode = FilterMode.Bilinear };
             rgbIntermediate.Create();
         }
-        
-        if (cropIntermediate == null) {
-            int a = Mathf.Min(_yTexture.width, _yTexture.height);
-            cropIntermediate = new RenderTexture(a, a, 0, RenderTextureFormat.ARGB32);
-            cropIntermediate.enableRandomWrite = true;
-            cropIntermediate.filterMode = FilterMode.Trilinear;
-            cropIntermediate.Create();
-        }
-        
-        yCbCrMaterial.SetTexture("_textureY", _yTexture);
-        yCbCrMaterial.SetTexture("_textureCbCr", _cbCrTexture);
-        cropMaterial.SetFloat("_AspectRatio", aspectRatio);
-        if (m_HoloKitCameraManager.ScreenRenderMode == ScreenRenderMode.Mono) {
-            cropMaterial.SetFloat("_Rotate", 1.0f);
-        } else {
-            cropMaterial.SetFloat("_Rotate", 0.0f);
-        }
-        
+    }
+
+    void ProcessWebCamFrame()
+    {
+        if (webCamTexture.width <= 16 || webCamTexture.height <= 16) return;
+        CameraStatus = "Camera: " + webCamTexture.deviceName;
+        ProcessRgbFrame(webCamTexture, webCamTexture.videoRotationAngle, webCamTexture.videoVerticallyMirrored);
+    }
+
+    void ProcessRgbFrame(Texture texture, float rotation, bool verticalMirror)
+    {
+        EnsureTextures(texture.width, texture.height, false);
+        runtimeCrop.SetFloat("_AspectRatio", (float)texture.width / texture.height);
+        runtimeCrop.SetFloat("_Rotate", 0);
+        runtimeCrop.SetFloat("_VideoRotation", rotation);
+        runtimeCrop.SetFloat("_VerticalMirror", verticalMirror ? 1 : 0);
         commandBuffer.Clear();
-        commandBuffer.Blit(null, rgbIntermediate, yCbCrMaterial);
-        commandBuffer.Blit(rgbIntermediate, cropIntermediate, cropMaterial);
-        TextureConverter.ToTensor(commandBuffer, cropIntermediate, inputTensor, _textureSettings);
+        commandBuffer.Blit(texture, cropIntermediate, runtimeCrop);
+        ScheduleInference();
+    }
+
+    public void SelectVideo(string url)
+    {
+        if (!IsVideoReplay) throw new InvalidOperationException("Assign a VideoPlayer before starting video replay.");
+        videoSource.Stop();
+        HasFrame = false;
+        lastVideoFrame = -1;
+        CameraStatus = "Preparing video replay…";
+        videoSource.url = url;
+        videoSource.Prepare();
+    }
+
+    void OnVideoPrepared(VideoPlayer source) => source.Play();
+    void OnVideoError(VideoPlayer source, string message)
+    {
+        HasFrame = false;
+        CameraStatus = "Video error: " + message;
+        Debug.LogError(CameraStatus, this);
+    }
+
+    void OnCameraFrameReceived(ARCameraFrameEventArgs args)
+    {
+        if (!CanProcessFrame || args.textures.Count < 2) return;
+        var y = args.textures[0];
+        EnsureTextures(y.width, y.height, true);
+        runtimeYcbcr.SetTexture("_textureY", y);
+        runtimeYcbcr.SetTexture("_textureCbCr", args.textures[1]);
+        runtimeCrop.SetFloat("_AspectRatio", (float)y.width / y.height);
+#if UNITY_IOS || UNITY_EDITOR
+        runtimeCrop.SetFloat("_Rotate", m_HoloKitCameraManager != null &&
+            m_HoloKitCameraManager.ScreenRenderMode == ScreenRenderMode.Mono ? 1 : 0);
+#endif
+        commandBuffer.Clear();
+        commandBuffer.Blit(null, rgbIntermediate, runtimeYcbcr);
+        commandBuffer.Blit(rgbIntermediate, cropIntermediate, runtimeCrop);
+        ScheduleInference();
+        CameraStatus = "ARKit camera: " + y.width + " × " + y.height;
+    }
+
+    void ScheduleInference()
+    {
+        TextureConverter.ToTensor(commandBuffer, cropIntermediate, inputTensor, textureSettings);
         Graphics.ExecuteCommandBuffer(commandBuffer);
-        
-        // rawImage1.texture = rgbIntermediate;
-        // rawImage2.texture = cropIntermediate;
-
         worker.Schedule(inputTensor);
-        Tensor outputTensor = worker.PeekOutput(0);
-
-        ProcessOutput(outputTensor as Tensor<float>);
+        postprocessor.Process(worker.PeekOutput(0) as Tensor<float>, conf_human, conf_lower,
+            confidenceThreshold, iouThreshold, projectionPlaneHeight, projectionPlaneOffset, Stabilizer);
+        HasFrame = true;
+        ProcessedFrames++;
+        if (SystemInfo.supportsGraphicsFence && SystemInfo.supportsAsyncCompute)
+        {
+            inferenceFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation,
+                SynchronisationStageFlags.ComputeProcessing);
+            hasFence = true;
+        }
     }
 
-    private void ProcessOutput(Tensor<float> output)
+    /// <summary>Read exactly one 48-byte record on user interaction; never blocks the main thread.
+    /// Inference is held until the callback so the selected sprite and audio refer to the same frame.</summary>
+    public bool RequestCenterDetection(Action<bool, DetectionData.PoseDetection> callback)
     {
-        if (output == null) return;
-        
-        List<DetectionData.PoseDetection> detections = new List<DetectionData.PoseDetection>();
-        detections.Clear();
-        
-        TensorShape shape = output.shape;
-        
-        float[] data = output.DownloadToArray();
-        
-        // transpose array
-        int numDetections = shape[2]; // 8400
-        int numFeatures = shape[1];   // 62
-
-        float[] transposedData = new float[numDetections * numFeatures];
-        
-        for (int i = 0; i < numDetections; i++)
+        if (!isActiveAndEnabled || !HasFrame || postprocessor == null || readbackPending) return false;
+        readbackPending = true;
+        AsyncGPUReadback.Request(postprocessor.Center, request =>
         {
-            for (int j = 0; j < numFeatures; j++)
+            readbackPending = false;
+            try
             {
-                // [0, j, i] --> [i, j]
-                int srcIndex = j * numDetections + i;
-                int dstIndex = i * numFeatures + j;
-                transposedData[dstIndex] = data[srcIndex];
-            }
-        }
-        
-        for (int i = 0; i < numDetections; i++)
-        {
-            int baseIndex = i * numFeatures + 4;
-            
-            // Class ID
-            int maxClassId = 0;
-            float maxProb = transposedData[baseIndex];
-            for (int j = 1; j < 20; j++)
-            {
-                float prob = transposedData[baseIndex + j];
-                if (prob > maxProb)
+                if (cleanupRequested || this == null || !isActiveAndEnabled) return;
+                if (request.hasError)
                 {
-                    maxProb = prob;
-                    maxClassId = j;
+                    Debug.LogWarning("Could not read the selected detection from the GPU.", this);
+                    callback?.Invoke(false, default);
+                    return;
                 }
+                var result = request.GetData<GpuPoseDetection>()[0];
+                callback?.Invoke(result.info.y >= 0, result.ToDetection());
             }
-            
-            if (maxProb > 1)
-                Debug.LogError("maxProb > 1");
-
-            if (maxProb < conf_human)
-                continue;
-
-            if (class_lowerconf.Contains(maxClassId)) {
-                if (maxProb < conf_lower)
-                    maxClassId = 18;
-            } else {
-                if (maxProb < confidenceThreshold)
-                    maxClassId = 18;
-            }
-
-            // Bounding Box in cropped image (640x640)
-            float croppedCenterX = transposedData[baseIndex - 4];
-            float croppedCenterY = (640 - transposedData[baseIndex - 3]);
-            float width = transposedData[baseIndex - 2];
-            float height = transposedData[baseIndex - 1];
-            if (showDebugInfo)
-                Debug.Log($"BBox in YOLO: X: {croppedCenterX}, Y: {croppedCenterY}, width: {width}, height: {height}");
-
-            float bboxX = croppedCenterX - width / 2;
-            float bboxY = croppedCenterY - height / 2;
-            Rect bbox = new Rect(bboxX, bboxY, width, height);
-            
-            DetectionData.PoseDetection detection = new DetectionData.PoseDetection(maxClassId, maxProb, bbox);
-            
-            // 计算投影平面上的位置和尺寸
-            detection.projectionPosition = MapToProjectionPlane(croppedCenterX, croppedCenterY);
-            detection.projectionHeight = CalculateProjectionHeight(height);
-            
-            detections.Add(detection);
-        }
-
-        List<DetectionData.PoseDetection> result = ApplyNMS(detections, 0.6f);
-
-        // save latest detections and notify listeners
-        latestDetections = result;
-        OnDetectionsUpdated?.Invoke(latestDetections);
-    }
-
-    private bool CalculateIoU(Rect boxA, Rect boxB, float iouThreshold)
-    {
-        // calculate intersection area
-        float xMin = Mathf.Max(boxA.x, boxB.x);
-        float yMin = Mathf.Max(boxA.y, boxB.y);
-        float xMax = Mathf.Min(boxA.x + boxA.width, boxB.x + boxB.width);
-        float yMax = Mathf.Min(boxA.y + boxA.height, boxB.y + boxB.height);
-        
-        // no intersection
-        if (xMax < xMin || yMax < yMin)
-            return false;
-        
-        float intersectionArea = (xMax - xMin) * (yMax - yMin);
-        
-        float boxAArea = boxA.width * boxA.height;
-        float boxBArea = boxB.width * boxB.height;
-
-        if (boxBArea / intersectionArea > 0.8f) {
-            return true;
-        }
-        
-        float unionArea = boxAArea + boxBArea - intersectionArea;
-        return (intersectionArea / unionArea) > iouThreshold;
-    }
-
-    private List<DetectionData.PoseDetection> ApplyNMS(List<DetectionData.PoseDetection> detections, float iouThreshold)
-    {
-        // if detections less than 2, no NMS
-        if (detections.Count < 2)
-            return detections;
-            
-        // Sort by confidence (descending)
-        detections.Sort((a, b) => b.maxClassProbability.CompareTo(a.maxClassProbability));
-        
-        List<DetectionData.PoseDetection> result = new List<DetectionData.PoseDetection>();
-        result.Clear();
-        List<bool> isSupressed = new List<bool>(new bool[detections.Count]); // False
-        
-        for (int i = 0; i < detections.Count; i++)
-        {
-            if (isSupressed[i])
-                continue;
-                
-            result.Add(detections[i]);
-            
-            for (int j = i + 1; j < detections.Count; j++)
+            finally
             {
-                if (isSupressed[j])
-                    continue;
-                    
-                // If IoU > threshold, suppress the lower confidence one
-                if (CalculateIoU(detections[i].boundingBox, detections[j].boundingBox, iouThreshold))
-                    isSupressed[j] = true;
+                if (cleanupRequested) DisposeGpuResources();
             }
-        }
-        
-        // 查找包含画面中心点的检测结果
-        UpdateCenterDetection(result);
-        
-        return result;
-    }
-    
-    // 更新中心检测结果
-    private void UpdateCenterDetection(List<DetectionData.PoseDetection> detections)
-    {
-        // 画面中心点坐标
-        Vector2 centerPoint = new Vector2(320, 320);
-        
-        // 存储包含中心点的检测结果
-        List<DetectionData.PoseDetection> centerDetections = new List<DetectionData.PoseDetection>();
-        
-        // 遍历所有检测结果
-        foreach (var detection in detections)
-        {
-            // 检查边界框是否包含中心点
-            if (detection.boundingBox.Contains(centerPoint))
-            {
-                centerDetections.Add(detection);
-            }
-        }
-        
-        // 如果没有找到包含中心点的检测结果
-        if (centerDetections.Count == 0)
-        {
-            hasCenterDetection = false;
-            return;
-        }
-        
-        // 如果只有一个包含中心点的检测结果，直接使用
-        if (centerDetections.Count == 1)
-        {
-            centerDetection = centerDetections[0];
-            hasCenterDetection = true;
-            return;
-        }
-        
-        // 如果有多个包含中心点的检测结果，找到中心点最接近画面中心的一个
-        DetectionData.PoseDetection closestDetection = centerDetections[0];
-        float minDistance = float.MaxValue;
-        
-        foreach (var detection in centerDetections)
-        {
-            // 计算边界框中心点
-            Vector2 bboxCenter = new Vector2(
-                detection.boundingBox.x + detection.boundingBox.width / 2,
-                detection.boundingBox.y + detection.boundingBox.height / 2
-            );
-            
-            // 计算到画面中心的距离
-            float distance = Vector2.Distance(bboxCenter, centerPoint);
-            
-            // 如果距离更小，更新最近的检测结果
-            if (distance < minDistance)
-            {
-                minDistance = distance;
-                closestDetection = detection;
-            }
-        }
-        
-        centerDetection = closestDetection;
-        hasCenterDetection = true;
-    }
-    
-    // 获取中心检测结果
-    public bool TryGetCenterDetection(out DetectionData.PoseDetection detection)
-    {
-        if (hasCenterDetection)
-        {
-            detection = centerDetection;
-            return true;
-        }
-        
-        detection = new DetectionData.PoseDetection(-1, 0, new Rect());
-        return false;
+        });
+        return true;
     }
 
-    private void OnApplicationQuit()
+    static void ReleaseTexture(ref RenderTexture texture)
     {
-        // 确保在应用退出时释放所有资源
-        CleanupResources();
+        if (texture == null) return;
+        texture.Release();
+        Destroy(texture);
+        texture = null;
     }
-    
-    private void CleanupResources()
+
+    void CleanupResources()
     {
-        if (worker != null)
+        cleanupRequested = true;
+        HasFrame = false;
+        if (videoSource != null)
         {
-            worker.Dispose();
-            worker = null;
+            videoSource.prepareCompleted -= OnVideoPrepared;
+            videoSource.errorReceived -= OnVideoError;
+            videoSource.Stop();
         }
-        
-        if (webCamTexture != null && webCamTexture.isPlaying)
+        if (arCameraManager != null) arCameraManager.frameReceived -= OnCameraFrameReceived;
+        if (webCamTexture != null)
         {
             webCamTexture.Stop();
+            Destroy(webCamTexture);
+            webCamTexture = null;
         }
-        
-        if (useARCamera && arCameraManager != null)
-        {
-            arCameraManager.frameReceived -= OnCameraFrameReceived;
-        }
-        
-        // 释放CommandBuffer
-        if (commandBuffer != null)
-        {
-            commandBuffer.Dispose();
-            commandBuffer = null;
-        }
-        
-        // 释放RenderTexture
-        if (rgbIntermediate != null)
-        {
-            rgbIntermediate.Release();
-            rgbIntermediate = null;
-        }
-        
-        // 释放TensorFloat
-        if (inputTensor != null)
-        {
-            inputTensor.Dispose();
-            inputTensor = null;
-        }
+        // A readback owns an outstanding use of the buffers. Release them in its callback.
+        if (!readbackPending) DisposeGpuResources();
     }
 
-    private void OnDestroy()
+    void DisposeGpuResources()
     {
-        // 使用通用的清理方法
-        CleanupResources();
-        
-        // 移除事件监听
-        Application.quitting -= OnApplicationQuit;
-        commandBuffer.Release();
+        worker?.Dispose(); worker = null;
+        inputTensor?.Dispose(); inputTensor = null;
+        commandBuffer?.Dispose(); commandBuffer = null;
+        postprocessor?.Dispose(); postprocessor = null;
+        ReleaseTexture(ref rgbIntermediate);
+        ReleaseTexture(ref cropIntermediate);
+        if (runtimeCrop != null) Destroy(runtimeCrop);
+        if (runtimeYcbcr != null) Destroy(runtimeYcbcr);
+        runtimeCrop = runtimeYcbcr = null;
     }
 
-    public List<DetectionData.PoseDetection> GetLatestDetections()
-    {
-        return latestDetections;
-    }
+    // Recognition pauses while a character sound plays and while the device sits still, so stale
+    // tracks must not survive into the next session.
+    void OnEnable() => postprocessor?.ResetTracks();
 
-    // 将图像坐标映射到虚拟投影平面上的相对位置
-    private Vector2 MapToProjectionPlane(float imageX, float imageY)
-    {
-        // 将图像坐标归一化到[-1,1]范围
-        // 注意：输入的imageX和imageY是像素坐标，范围为[0,640]
-        float normalizedX = (imageX / 640.0f) * 2 - 1;
-        float normalizedY = (imageY / 640.0f) * 2 - 1;
-        
-        // 计算投影平面上的位置，等比例放大
-        float planeX = normalizedX * (projectionPlaneHeight / 2.0f) + projectionPlaneOffset.x;
-        float planeY = normalizedY * (projectionPlaneHeight / 2.0f) + projectionPlaneOffset.y;
-        
-        // 返回相对于相机的偏移位置（不再转换为世界坐标）
-        return new Vector2(planeX, planeY);
-    }
-    
-    // 计算投影平面上的高度
-    private float CalculateProjectionHeight(float imageHeight)
-    {
-        // 将图像高度转换为投影平面上的高度
-        return imageHeight / 640.0f * projectionPlaneHeight;
-    }
+    void OnDestroy() => CleanupResources();
 }

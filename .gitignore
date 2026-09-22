@@ -75,3 +75,13 @@ crashlytics-build.properties
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
 .DS_Store
+
+# Unity 6 generated solution
+*.slnx
+
+# Python CLI caches
+__pycache__/
+
+# Local model training workspace (datasets, runs, venv)
+/Training/
+/runs/

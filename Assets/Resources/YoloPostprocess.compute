@@ -1,0 +1,260 @@
+#pragma kernel Decode
+#pragma kernel Suppress
+#pragma kernel BuildDrawArguments
+#pragma kernel Stabilize
+
+// All records use three float4s (48 bytes), matching GpuPoseDetection in C#.
+struct Detection
+{
+    float4 box;        // bottom-left x/y, width/height in the 640-square image
+    float4 info;       // probability, class, projection x/y
+    float4 extra;      // projection height, original candidate index, reserved
+};
+
+StructuredBuffer<float> _Output;
+RWStructuredBuffer<Detection> _Candidates;
+RWStructuredBuffer<Detection> _Detections;
+RWStructuredBuffer<Detection> _Center;
+RWStructuredBuffer<uint> _Metadata; // count, center index + 1, capacity reached
+RWStructuredBuffer<uint> _DrawArgs;
+
+int _CandidateCount;
+int _MaxDetections;
+float _HumanThreshold;
+float _LowThreshold;
+float _ConfidenceThreshold;
+float _IouThreshold;
+float _PlaneHeight;
+float2 _PlaneOffset;
+
+[numthreads(256, 1, 1)]
+void Decode(uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    if (i >= (uint)_CandidateCount) return;
+    float score = -1;
+    uint classId = 0;
+    for (uint c = 0; c < 20; ++c)
+    {
+        float p = _Output[(4 + c) * _CandidateCount + i];
+        if (isfinite(p) && p > score) { score = p; classId = c; }
+    }
+    float2 center = float2(_Output[i], 640 - _Output[_CandidateCount + i]);
+    float2 size = float2(_Output[2 * _CandidateCount + i], _Output[3 * _CandidateCount + i]);
+    bool lowClass = classId == 0 || classId == 1 || classId == 4 || classId == 7 ||
+                    classId == 14 || classId == 16 || classId == 17;
+    if (score < (lowClass ? _LowThreshold : _ConfidenceThreshold)) classId = 18;
+    if (score < _HumanThreshold || !all(isfinite(center)) || !all(isfinite(size)) || any(size <= 0))
+        score = -1;
+    Detection d;
+    d.box = float4(center - size * 0.5, size);
+    d.info = float4(score, classId, (center / 640 * 2 - 1) * (_PlaneHeight * 0.5) + _PlaneOffset);
+    d.extra = float4(size.y / 640 * _PlaneHeight, i, 0, 0);
+    _Candidates[i] = d;
+}
+
+groupshared float scores[256];
+groupshared uint indices[256];
+groupshared Detection winner;
+groupshared uint selected;
+groupshared uint count;
+groupshared float centerDistance;
+
+bool Overlaps(float4 a, float4 b)
+{
+    float2 extent = max(0, min(a.xy + a.zw, b.xy + b.zw) - max(a.xy, b.xy));
+    float intersection = extent.x * extent.y;
+    float area = a.z * a.w + b.z * b.w - intersection;
+    return area > 0 && intersection / area > _IouThreshold;
+}
+
+// Exact greedy, class-agnostic NMS. One workgroup owns the whole selection loop;
+// reduction and suppression are parallel within that group, with no CPU sorting.
+// Candidates suppressed by an earlier winner cannot suppress subsequent boxes.
+[numthreads(256, 1, 1)]
+void Suppress(uint tid : SV_GroupIndex)
+{
+    if (tid == 0)
+    {
+        count = 0;
+        centerDistance = 3.402823466e+38;
+        _Metadata[0] = 0;
+        _Metadata[1] = 0;
+        _Metadata[2] = 0;
+        Detection empty = (Detection)0;
+        empty.info.y = -1;
+        _Center[0] = empty;
+    }
+    GroupMemoryBarrierWithGroupSync();
+    // The extra iteration detects truncation without silently dropping a result.
+    for (uint step = 0; step <= (uint)_MaxDetections; ++step)
+    {
+        float bestScore = -1;
+        uint bestIndex = 0xffffffff;
+        for (uint i = tid; i < (uint)_CandidateCount; i += 256)
+        {
+            float score = _Candidates[i].info.x;
+            if (score > bestScore || (score == bestScore && i < bestIndex))
+            { bestScore = score; bestIndex = i; }
+        }
+        scores[tid] = bestScore;
+        indices[tid] = bestIndex;
+        GroupMemoryBarrierWithGroupSync();
+        for (uint stride = 128; stride > 0; stride >>= 1)
+        {
+            if (tid < stride && (scores[tid + stride] > scores[tid] ||
+                (scores[tid + stride] == scores[tid] && indices[tid + stride] < indices[tid])))
+            { scores[tid] = scores[tid + stride]; indices[tid] = indices[tid + stride]; }
+            GroupMemoryBarrierWithGroupSync();
+        }
+        if (scores[0] < 0) break; // uniform exit, including an entirely empty frame
+        if (step == (uint)_MaxDetections)
+        {
+            if (tid == 0) _Metadata[2] = 1;
+            break;
+        }
+        if (tid == 0)
+        {
+            selected = indices[0];
+            winner = _Candidates[selected];
+            _Detections[count] = winner;
+            float2 center = winner.box.xy + winner.box.zw * 0.5;
+            float distance = dot(center - 320, center - 320);
+            if (all(winner.box.xy <= 320) && all(winner.box.xy + winner.box.zw > 320) && distance < centerDistance)
+            {
+                centerDistance = distance;
+                _Center[0] = winner;
+                _Metadata[1] = count + 1;
+            }
+            count++;
+        }
+        GroupMemoryBarrierWithGroupSync();
+        for (uint j = tid; j < (uint)_CandidateCount; j += 256)
+        {
+            Detection d = _Candidates[j];
+            if (j == selected || (d.info.x >= 0 && Overlaps(winner.box, d.box)))
+            { d.info.x = -1; _Candidates[j] = d; }
+        }
+        DeviceMemoryBarrierWithGroupSync();
+    }
+    if (tid == 0) _Metadata[0] = count;
+}
+
+[numthreads(32, 1, 1)]
+void BuildDrawArguments(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x < 20) _DrawArgs[id.x * 5 + 1] = _Metadata[0];
+}
+
+// Temporal stabilisation. Detections are matched against persistent tracks by IoU so a character
+// only appears after it has been seen for several frames, keeps being drawn across brief dropouts,
+// and stops flipping class whenever a score crosses the class-18 fallback boundary. Tracks live in
+// _Tracks across frames; extra.y holds the frame stamp of the last match, extra.z the hit count and
+// extra.w the consecutive miss count.
+RWStructuredBuffer<Detection> _Tracks;
+int _FrameIndex;
+int _TrackMinHits;
+int _TrackMaxMisses;
+float _TrackMatchIou;
+float _TrackSmoothing;
+float _TrackClassScore;
+
+float IntersectionOverUnion(float4 a, float4 b)
+{
+    float2 extent = max(0, min(a.xy + a.zw, b.xy + b.zw) - max(a.xy, b.xy));
+    float intersection = extent.x * extent.y;
+    float area = a.z * a.w + b.z * b.w - intersection;
+    return area > 0 ? intersection / area : 0;
+}
+
+[numthreads(1, 1, 1)]
+void Stabilize(uint3 id : SV_DispatchThreadID)
+{
+    uint detected = _Metadata[0];
+    float frame = (float)_FrameIndex;
+
+    // Associate this frame's detections with existing tracks, greedily by IoU.
+    for (uint d = 0; d < detected; ++d)
+    {
+        Detection det = _Detections[d];
+        int best = -1;
+        float bestIou = _TrackMatchIou;
+        for (uint t = 0; t < (uint)_MaxDetections; ++t)
+        {
+            Detection track = _Tracks[t];
+            if (track.info.x < 0 || track.extra.y == frame) continue; // free, or already matched
+            float iou = IntersectionOverUnion(det.box, track.box);
+            if (iou > bestIou) { bestIou = iou; best = (int)t; }
+        }
+
+        if (best < 0)
+        {
+            // No match: take a free slot, else evict the track that has been missing longest.
+            int slot = -1;
+            float worst = -1;
+            for (uint f = 0; f < (uint)_MaxDetections; ++f)
+            {
+                Detection track = _Tracks[f];
+                if (track.info.x < 0) { slot = (int)f; break; }
+                if (track.extra.y != frame && track.extra.w > worst) { worst = track.extra.w; slot = (int)f; }
+            }
+            if (slot < 0) continue; // every slot is already claimed this frame
+            det.extra.y = frame;
+            det.extra.z = 1;
+            det.extra.w = 0;
+            _Tracks[slot] = det;
+            continue;
+        }
+
+        Detection track = _Tracks[best];
+        float keep = track.extra.z >= 1 ? _TrackSmoothing : 0; // a fresh track snaps to its detection
+        Detection updated;
+        updated.box = lerp(det.box, track.box, keep);
+        updated.info.x = det.info.x;
+        // The class only follows a confident detection, so a score dipping under the class-18
+        // fallback boundary no longer swaps the drawn character.
+        updated.info.y = (det.info.x >= _TrackClassScore || track.extra.z < (float)_TrackMinHits)
+            ? det.info.y : track.info.y;
+        updated.info.zw = lerp(det.info.zw, track.info.zw, keep);
+        updated.extra.x = lerp(det.extra.x, track.extra.x, keep);
+        updated.extra.y = frame;
+        updated.extra.z = min(track.extra.z + 1, 1000);
+        updated.extra.w = 0;
+        _Tracks[best] = updated;
+    }
+
+    // Age every track that saw no detection this frame and retire the ones past the miss budget.
+    for (uint a = 0; a < (uint)_MaxDetections; ++a)
+    {
+        Detection track = _Tracks[a];
+        if (track.info.x < 0 || track.extra.y == frame) continue;
+        track.extra.w += 1;
+        if (track.extra.w > (float)_TrackMaxMisses) track.info.x = -1;
+        _Tracks[a] = track;
+    }
+
+    // Publish the confirmed tracks in place of the raw detections.
+    uint visible = 0;
+    float centerDistance = 3.402823466e+38;
+    Detection empty = (Detection)0;
+    empty.info.y = -1;
+    _Center[0] = empty;
+    _Metadata[1] = 0;
+    for (uint v = 0; v < (uint)_MaxDetections; ++v)
+    {
+        Detection track = _Tracks[v];
+        if (track.info.x < 0 || track.extra.z < (float)_TrackMinHits) continue;
+        _Detections[visible] = track;
+        float2 center = track.box.xy + track.box.zw * 0.5;
+        float distance = dot(center - 320, center - 320);
+        if (all(track.box.xy <= 320) && all(track.box.xy + track.box.zw > 320) && distance < centerDistance)
+        {
+            centerDistance = distance;
+            _Center[0] = track;
+            _Metadata[1] = visible + 1;
+        }
+        visible++;
+        if (visible >= (uint)_MaxDetections) break;
+    }
+    _Metadata[0] = visible;
+}

@@ -5,6 +5,8 @@ Shader "Custom/CropShader"
         _MainTex ("Main Texture", 2D) = "black" {}
         _AspectRatio ("Aspect Ratio", Float) = 1.0
         _Rotate ("Rotate", Float) = 0.0
+        _VideoRotation ("Webcam Rotation", Float) = 0.0
+        _VerticalMirror ("Webcam Vertical Mirror", Float) = 0.0
     }
     SubShader
     {
@@ -17,6 +19,9 @@ Shader "Custom/CropShader"
 
         Pass
         {
+            Cull Off
+            ZTest Always
+            ZWrite Off
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
@@ -38,6 +43,8 @@ Shader "Custom/CropShader"
             sampler2D _MainTex;
             float _AspectRatio;
             float _Rotate;
+            float _VideoRotation;
+            float _VerticalMirror;
             v2f vert (appdata v)
             {
                 v2f o;
@@ -79,11 +86,17 @@ Shader "Custom/CropShader"
             fixed4 frag (v2f i) : SV_Target
             {
                 // Extract center square from input texture
-                float2 squareUV = extractCenterSquare(i.uv, _AspectRatio);
+                float2 uv = i.uv;
+                float angle = radians(_VideoRotation);
+                float2 p = uv - 0.5;
+                uv = float2(cos(angle) * p.x - sin(angle) * p.y,
+                            sin(angle) * p.x + cos(angle) * p.y) + 0.5;
                 
                 if (_Rotate > 0.5) {
-                    squareUV = float2(1.0 - squareUV.y, squareUV.x);
+                    uv = float2(1.0 - uv.y, uv.x);
                 }
+                float2 squareUV = extractCenterSquare(uv, _AspectRatio);
+                if (_VerticalMirror > 0.5) squareUV.y = 1.0 - squareUV.y;
                 
                 return tex2D(_MainTex, squareUV);
             }

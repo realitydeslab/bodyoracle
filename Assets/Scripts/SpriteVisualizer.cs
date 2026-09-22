@@ -1,3 +1,4 @@
+#if UNITY_IOS || UNITY_EDITOR
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -43,7 +44,8 @@ public class SpriteVisualizer : MonoBehaviour
     
     [Header("Visualization Settings")]
     [SerializeField] private bool showDebugInfo = false; // 是否显示调试信息
-    private Material spriteMaterial; // Sprite使用的材质
+    private GpuSpriteRenderer gpuSprites;
+    private bool selectionPending;
     [SerializeField] private float projectionPlaneDistance = 5.2f; // 投影平面距离相机的距离（米）
     
     [Header("Device Movement Monitoring")]
@@ -56,16 +58,11 @@ public class SpriteVisualizer : MonoBehaviour
     private AudioSource audioSource;
     // 是否正在播放音频
     private bool isPlayingAudio = false;
+    public bool IsPlayingAudio => isPlayingAudio;
+    public int SelectedClass => currentSoundSpriteClassId;
     // 当前显示的声音Sprite的类别ID
     private int currentSoundSpriteClassId = -1;
     
-    // 对象池，用于重用Sprite对象
-    private List<GameObject> spritePool = new List<GameObject>();
-    private List<GameObject> activeSprites = new List<GameObject>();
-    
-    // 当前活跃的检测结果
-    private Dictionary<int, DetectionData.PoseDetection> activeDetections = new Dictionary<int, DetectionData.PoseDetection>();
-
     [SerializeField] private TMP_Text fps_text;
     [SerializeField] private float refreshrate = 1f;
     private float fps_timer;
@@ -109,7 +106,13 @@ public class SpriteVisualizer : MonoBehaviour
             Debug.LogWarning("Sound clips array is not properly set up. Expected at least 20 audio clips.");
         }
     
-        spriteMaterial = new Material(Shader.Find("Sprites/Default"));
+        try { gpuSprites = new GpuSpriteRenderer(classSprites); }
+        catch (System.Exception exception)
+        {
+            Debug.LogException(exception, this);
+            enabled = false;
+            return;
+        }
         
         // 添加音频源
         audioSource = gameObject.AddComponent<AudioSource>();
@@ -122,23 +125,22 @@ public class SpriteVisualizer : MonoBehaviour
             Debug.LogWarning("Trigger button is not assigned.");
         }
         
-        // 订阅检测事件
-        yoloDetector.OnDetectionsUpdated += UpdateVisualizations;
+
 
         if (mainCameraTransform == null || centerEyePoseTransform == null)
         {
             Debug.LogWarning("无法找到Main Camera或Center Eye Pose对象");
             GameObject mainCamera = GameObject.Find("Main Camera");
             GameObject centerEyePose = GameObject.Find("Center Eye Pose");
-            mainCameraTransform = mainCamera.transform;
-            centerEyePoseTransform = centerEyePose.transform;
+            if (mainCamera != null) mainCameraTransform = mainCamera.transform;
+            if (centerEyePose != null) centerEyePoseTransform = centerEyePose.transform;
         }
         
 #if UNITY_IOS && !UNITY_EDITOR
         // 初始化设备移动监控
-        InitializeDeviceMovementMonitoring();
+        if (!yoloDetector.IsVideoReplay) InitializeDeviceMovementMonitoring();
         // 启用陀螺仪
-        Input.gyro.enabled = true;
+        if (!yoloDetector.IsVideoReplay) Input.gyro.enabled = true;
 #endif
     }
     
@@ -147,7 +149,7 @@ public class SpriteVisualizer : MonoBehaviour
         if (Time.unscaledTime > fps_timer)
         {
             int fps = (int)(1f / Time.unscaledDeltaTime);
-            fps_text.text = "fps: " + fps;
+            if (fps_text != null) fps_text.text = "fps: " + fps;
             fps_timer = Time.unscaledTime + refreshrate;
         }
 
@@ -176,7 +178,7 @@ public class SpriteVisualizer : MonoBehaviour
             soundSpriteObject_left.SetActive(false);
             soundSpriteObject_right.SetActive(false);
             currentSoundSpriteClassId = -1;
-            DetectionData.isDetecting = true;
+            DetectionData.isDetecting = !isInSleepMode;
         }
     }
     
@@ -290,6 +292,8 @@ public class SpriteVisualizer : MonoBehaviour
             return;
             
         isInSleepMode = true;
+        if (audioSource != null) audioSource.Stop();
+        isPlayingAudio = false;
         
         // 暂停检测
         DetectionData.isDetecting = false;
@@ -329,15 +333,6 @@ public class SpriteVisualizer : MonoBehaviour
     // 隐藏所有可视化元素
     private void HideAllVisualizations()
     {
-        // 隐藏所有活跃的Sprite
-        foreach (var sprite in activeSprites)
-        {
-            if (sprite != null)
-            {
-                sprite.SetActive(false);
-            }
-        }
-        
         // 隐藏声音Sprite
         if (soundSpriteObject_mono != null)
             soundSpriteObject_mono.SetActive(false);
@@ -384,7 +379,7 @@ public class SpriteVisualizer : MonoBehaviour
     private void UpdateParentConstraints()
     {
         // 检查必要的引用是否存在
-        if (mainCameraTransform == null || centerEyePoseTransform == null)
+        if (m_HoloKitCameraManager == null || mainCameraTransform == null || centerEyePoseTransform == null)
             return;
         
         bool isMonoMode = m_HoloKitCameraManager.ScreenRenderMode == ScreenRenderMode.Mono;
@@ -423,38 +418,24 @@ public class SpriteVisualizer : MonoBehaviour
         }
     }
     
-    // 按钮点击事件
+    void LateUpdate()
+    {
+        if (!isInSleepMode && yoloDetector != null && yoloDetector.isActiveAndEnabled && yoloDetector.HasFrame)
+            gpuSprites?.Draw(yoloDetector.GpuResults, transform, projectionPlaneDistance, isPlayingAudio, gameObject.layer);
+    }
+
     public void OnTriggerButtonClicked()
     {
-        Debug.Log("button pressed");
-        // 如果正在播放音频，忽略按钮行为
-        if (isPlayingAudio)
-            return;
-        
-        // 尝试获取中心检测结果
-        DetectionData.PoseDetection centerDetection;
-        if (yoloDetector.TryGetCenterDetection(out centerDetection))
+        if (isPlayingAudio || selectionPending || isInSleepMode || yoloDetector == null) return;
+        selectionPending = yoloDetector.RequestCenterDetection((found, detection) =>
         {
-            DetectionData.isDetecting = false;
-
-            // 显示声音Sprite并播放音频
-            ShowSoundSpriteAndPlayAudio(centerDetection.predictedClassId);
-
-            // 清除当前活跃的检测，仅保留中心元素
-            activeDetections.Clear();
-            activeDetections[GetDetectionId(centerDetection)] = centerDetection;
-            UpdateSpriteVisualizations();
-        }
-        else
-        {
-            // 没有中心检测结果，不做任何反应
-            if (showDebugInfo)
-            {
-                Debug.Log("没有找到包含中心点的检测结果");
-            }
-        }
+            selectionPending = false;
+            if (this == null || !isActiveAndEnabled || isInSleepMode || !found) return;
+            ShowSoundSpriteAndPlayAudio(detection.predictedClassId);
+            if (isPlayingAudio) DetectionData.isDetecting = false;
+        });
     }
-    
+
     // 录制按钮点击事件
     public void OnRecordButtonClicked()
     {
@@ -523,187 +504,24 @@ public class SpriteVisualizer : MonoBehaviour
         }
     }
     
+    void OnDisable()
+    {
+        selectionPending = false;
+        if (isPlayingAudio)
+        {
+            audioSource.Stop();
+            isPlayingAudio = false;
+            HideAllVisualizations();
+        }
+        DetectionData.isDetecting = true;
+    }
+
     void OnDestroy()
     {
-        // 取消订阅事件
-        if (yoloDetector != null)
-            yoloDetector.OnDetectionsUpdated -= UpdateVisualizations;
-        
-        // 清理对象池
-        foreach (var sprite in spritePool)
-        {
-            if (sprite != null)
-                Destroy(sprite);
-        }
-        spritePool.Clear();
-        activeSprites.Clear();
-    }
-    
-    // 更新可视化
-    private void UpdateVisualizations(List<DetectionData.PoseDetection> detections)
-    {
-        try
-        {
-            // 清除当前活跃的检测
-            activeDetections.Clear();
-
-            if (detections.Count != 0)
-            {
-                // 处理新的检测结果
-                foreach (var detection in detections)
-                {
-                    // 使用检测ID作为唯一标识符
-                    int detectionId = GetDetectionId(detection);
-                    activeDetections[detectionId] = detection;
-                }
-            }
-            UpdateSpriteVisualizations();
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"Error in UpdateVisualizations: {e.Message}\n{e.StackTrace}");
-        }
-    }
-    
-    // 生成检测的唯一ID
-    private int GetDetectionId(DetectionData.PoseDetection detection)
-    {
-        // 使用类别ID和位置信息生成唯一ID
-        return detection.predictedClassId * 1000 + 
-               Mathf.RoundToInt(detection.projectionPosition.x * 100) + 
-               Mathf.RoundToInt(detection.projectionPosition.y * 100);
-    }
-    
-    // 更新Sprite可视化
-    private void UpdateSpriteVisualizations()
-    {
-        try
-        {
-            // 首先，将所有活跃的Sprite标记为未使用
-            foreach (var sprite in activeSprites)
-            {
-                sprite.SetActive(false);
-            }
-            activeSprites.Clear();
-            
-            // 为每个检测创建或重用Sprite对象
-            foreach (var kvp in activeDetections)
-            {
-                int detectionId = kvp.Key;
-                DetectionData.PoseDetection detection = kvp.Value;
-                
-                // 检查类别ID是否有效
-                if (detection.predictedClassId < 0 || detection.predictedClassId >= classSprites.Length || 
-                    classSprites[detection.predictedClassId] == null)
-                {
-                    Debug.LogWarning($"Invalid class ID: {detection.predictedClassId} or missing sprite");
-                    continue;
-                }
-                
-                // 获取或创建Sprite对象
-                GameObject spriteObj = GetSpriteFromPool();
-                if (spriteObj == null)
-                {
-                    Debug.LogError("Failed to get sprite from pool");
-                    continue;
-                }
-                
-                activeSprites.Add(spriteObj);
-                
-                // 设置Sprite
-                SpriteRenderer renderer = spriteObj.GetComponent<SpriteRenderer>();
-                if (renderer == null)
-                {
-                    Debug.LogError("SpriteRenderer component not found on sprite object");
-                    continue;
-                }
-                
-                renderer.sprite = classSprites[detection.predictedClassId];
-                
-                // 设置sprite的位置
-                spriteObj.transform.localPosition = new Vector3(
-                    detection.projectionPosition.x,
-                    detection.projectionPosition.y, 
-                    projectionPlaneDistance
-                );
-                // Debug.Log($"Sprite position: {spriteObj.transform.localPosition}");
-
-                // 设置sprite的旋转
-                spriteObj.transform.localRotation = Quaternion.identity;
-
-                // 计算缩放比例，保持原始宽高比，但宽度与检测宽度匹配
-                float originalHeight = renderer.sprite.bounds.size.y;
-                float targetHeight = detection.projectionHeight;
-                float scale = targetHeight / originalHeight;
-                
-                spriteObj.transform.localScale = new Vector3(scale, scale, scale);
-                // Debug.Log($"Sprite scale: {spriteObj.transform.localScale}");
-                
-                // 激活Sprite对象
-                spriteObj.SetActive(true);
-            }
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"Error in UpdateSpriteVisualizations: {e.Message}");
-        }
-    }
-    
-    // 从对象池获取Sprite对象
-    private GameObject GetSpriteFromPool()
-    {
-        try
-        {
-            // 尝试从池中获取非活动的Sprite
-            GameObject sprite = null;
-            
-            // 查找未使用的对象
-            foreach (var obj in spritePool)
-            {
-                if (obj != null && !obj.activeInHierarchy)
-                {
-                    sprite = obj;
-                    break;
-                }
-            }
-            
-            // 如果没有可用的Sprite，创建一批新的
-            if (sprite == null)
-            {
-                // 预分配一批Sprite对象，而不是每次只创建一个
-                int batchSize = 5; // 每次创建5个对象
-                for (int i = 0; i < batchSize; i++)
-                {
-                    GameObject newObj = new GameObject($"DetectionSprite_{spritePool.Count}");
-                    newObj.transform.SetParent(transform);
-                    
-                    // 添加SpriteRenderer组件
-                    SpriteRenderer renderer = newObj.AddComponent<SpriteRenderer>();
-                    renderer.material = spriteMaterial;
-                    renderer.sortingOrder = 100; // 确保在前面显示
-                    
-                    // 确保新创建的对象默认不可见
-                    newObj.SetActive(false);
-                    
-                    spritePool.Add(newObj);
-                }
-                
-                // 使用第一个新创建的Sprite
-                sprite = spritePool[spritePool.Count - batchSize];
-                
-                if (showDebugInfo)
-                {
-                    Debug.Log($"对象池扩展：当前大小 {spritePool.Count}");
-                }
-            }
-            
-            return sprite;
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"Error in GetSpriteFromPool: {e.Message}");
-            return null;
-        }
+        if (triggerButton != null) triggerButton.onClick.RemoveListener(OnTriggerButtonClicked);
+        gpuSprites?.Dispose();
+        gpuSprites = null;
     }
 }
-    
+
+#endif
