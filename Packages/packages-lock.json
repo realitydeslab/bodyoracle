@@ -236,7 +236,7 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.xr.arfoundation": {
-      "version": "6.3.5",
+      "version": "6.4.3",
       "depth": 1,
       "source": "registry",
       "dependencies": {
@@ -254,13 +254,13 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.xr.arkit": {
-      "version": "6.3.5",
+      "version": "6.4.3",
       "depth": 0,
       "source": "registry",
       "dependencies": {
         "com.unity.xr.core-utils": "2.2.2",
         "com.unity.xr.management": "4.4.0",
-        "com.unity.xr.arfoundation": "6.3.5",
+        "com.unity.xr.arfoundation": "6.4.3",
         "com.unity.editorcoroutines": "1.0.0"
       },
       "url": "https://packages.unity.com"
@@ -297,14 +297,14 @@
       "url": "https://packages.unity.com"
     },
     "io.holokit.unity-sdk": {
-      "version": "https://github.com/holokit/holokit-unity-sdk.git#ab9560e75656bb5a27ac901983d5609da3b6eb87",
+      "version": "https://github.com/holokit/holokit-unity-sdk.git#5a16342dc11f479b2aaf418a4826cf3ac7c8bd91",
       "depth": 0,
       "source": "git",
       "dependencies": {
-        "com.unity.xr.arfoundation": "6.0.5",
-        "com.unity.xr.arkit": "6.0.5"
+        "com.unity.xr.arfoundation": "6.4.3",
+        "com.unity.xr.arkit": "6.4.3"
       },
-      "hash": "ab9560e75656bb5a27ac901983d5609da3b6eb87"
+      "hash": "5a16342dc11f479b2aaf418a4826cf3ac7c8bd91"
     },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",
