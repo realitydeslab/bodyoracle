@@ -5,7 +5,7 @@ upload through `BODYORACLE_BUILD_NUMBER` (see `Tools/testflight.py`).
 
 ## 0.3.0
 
-iOS build 5. Requires Unity 6000.3.24f1, HoloKit Unity SDK `0.6.0-preview.1` (`5a16342`), AR Foundation / ARKit 6.4.3.
+iOS builds 5 (TestFlight) and 6 (App Store review). Requires Unity 6000.3.24f1, HoloKit Unity SDK `0.6.0-preview.1` (`5a16342`), AR Foundation / ARKit 6.4.3.
 
 ### Added
 
@@ -50,6 +50,8 @@ iOS build 5. Requires Unity 6000.3.24f1, HoloKit Unity SDK `0.6.0-preview.1` (`5
   Editor, Tests with assembly definitions; scenes, model, sprites, audio, shaders, macOS plug-in),
   laid out like EchoVision's. `Assets/` keeps only project settings.
 - No Unity splash screen.
+- Build 6: clearer microphone purpose string, and the Info.plist declares no non-exempt encryption
+  (`ITSAppUsesNonExemptEncryption = false`), so uploads no longer stop at export compliance.
 - The app is named **Body Oracle** on the Home Screen and in the Mac menu bar (was `body-oracle`).
 - Mono: the guide grid, its prompt and the pronunciation shrink together to fit the screen, so
   the prompt below the grid is no longer cut off in landscape. Stereo keeps the full size.

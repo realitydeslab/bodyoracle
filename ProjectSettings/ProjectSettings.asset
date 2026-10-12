@@ -177,7 +177,7 @@ PlayerSettings:
   buildNumber:
     Standalone: 0
     VisionOS: 0
-    iPhone: 5
+    iPhone: 6
     tvOS: 0
   overrideDefaultApplicationIdentifier: 1
   AndroidBundleVersionCode: 1
@@ -598,7 +598,7 @@ PlayerSettings:
   cameraUsageDescription: Body Oracle uses your camera to recognize body poses and
     display characters.
   locationUsageDescription: 
-  microphoneUsageDescription: For audio recording
+  microphoneUsageDescription: Body Oracle records sound with the videos you capture using the Record button.
   bluetoothUsageDescription: 
   macOSTargetOSVersion: 12.0
   switchNMETAOverride: 
