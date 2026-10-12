@@ -8,8 +8,9 @@ Connect. Signing and upload rely on the Apple account configured in Xcode;
 and the Mac App Store profile for the team.
 
 Without an Xcode account session, pass an App Store Connect API key instead (flags or env
-ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_PATH; the key defaults to
-~/.appstoreconnect/private_keys/AuthKey_<id>.p8). Key material stays outside the repo.
+ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_PATH, else ~/.appstoreconnect/config.json with issuer_id,
+key_id and key_path; the key defaults to ~/.appstoreconnect/private_keys/AuthKey_<id>.p8). Key
+material stays outside the repo.
 
 Usage:
     python3 Tools/testflight_mac.py --team KR9H35SQQ9 --build-number 1
@@ -20,6 +21,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import plistlib
 import subprocess
@@ -73,6 +75,15 @@ def write_export_options(team: str, upload: bool, profile: str | None = None) ->
     return path
 
 
+def asc_config() -> dict[str, str]:
+    """API-key defaults from ~/.appstoreconnect/config.json (issuer_id, key_id, key_path), outside the repo."""
+    path = Path("~/.appstoreconnect/config.json").expanduser()
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
 def auth_args(key_id: str | None, issuer: str | None, key_path: str | None) -> list[str]:
     """xcodebuild flags for App Store Connect API-key auth, or none to use the Xcode account."""
     if not key_id:
@@ -87,16 +98,17 @@ def auth_args(key_id: str | None, issuer: str | None, key_path: str | None) -> l
 
 
 def main() -> int:
+    asc = asc_config()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--team", required=True, help="Apple developer team id")
     parser.add_argument("--build-number", required=True, help="Build number; must be new for this version on macOS")
     parser.add_argument("--skip-build", action="store_true", help="Reuse the existing Unity Xcode export")
     parser.add_argument("--skip-archive", action="store_true", help="Reuse the existing xcarchive")
     parser.add_argument("--skip-upload", action="store_true", help="Stop after exporting a signed pkg locally")
-    parser.add_argument("--api-key-id", default=os.environ.get("ASC_KEY_ID"), help="App Store Connect API key id")
-    parser.add_argument("--api-issuer", default=os.environ.get("ASC_ISSUER_ID"), help="App Store Connect issuer id")
+    parser.add_argument("--api-key-id", default=os.environ.get("ASC_KEY_ID", asc.get("key_id")), help="App Store Connect API key id")
+    parser.add_argument("--api-issuer", default=os.environ.get("ASC_ISSUER_ID", asc.get("issuer_id")), help="App Store Connect issuer id")
     parser.add_argument("--manual-profile", help="Mac App Store profile name for manual export signing")
-    parser.add_argument("--api-key-path", default=os.environ.get("ASC_KEY_PATH"), help="Path to AuthKey_<id>.p8")
+    parser.add_argument("--api-key-path", default=os.environ.get("ASC_KEY_PATH", asc.get("key_path")), help="Path to AuthKey_<id>.p8")
     args = parser.parse_args()
     auth = auth_args(args.api_key_id, args.api_issuer, args.api_key_path)
 
