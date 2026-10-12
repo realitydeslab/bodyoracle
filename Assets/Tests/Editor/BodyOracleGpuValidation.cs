@@ -162,6 +162,84 @@ public static class BodyOracleGpuValidation
         passed.Add("temporal stabilisation hysteresis, class stickiness and reset");
     }
 
+    // Display smoothing: a newly confirmed track is drawn exactly where it was detected, a moving
+    // track is eased toward its new position instead of jumping, and a zero time snaps.
+    static void ValidateFollow()
+    {
+        var settings = new StabilizerSettings
+        {
+            enabled = true, minHits = 1, maxMisses = 2,
+            matchIou = 0.1f, smoothing = 0f, classScore = 0.6f, displayTime = 0.1f,
+        };
+        using var post = new GpuYoloPostprocessor(8);
+        var metadata = new uint[3];
+        var shown = new GpuPoseDetection[8];
+        void Feed(float x)
+        {
+            var data = Fixture(1); Box(data, 0, 2, 0.9f, x, 320, 100, 100);
+            using var input = new ComputeBuffer(data.Length, sizeof(float));
+            input.SetData(data);
+            post.Process(input, 1, 0.1f, 0.35f, 0.6f, 0.6f, 10, new Vector2(1, -2), settings);
+        }
+        float Shown(float deltaTime)
+        {
+            post.Follow(deltaTime);
+            post.DisplayMetadata.GetData(metadata);
+            post.DisplayDetections.GetData(shown);
+            Check(metadata[0] == 1, "follow: the confirmed track is not drawn");
+            return shown[0].box.x + shown[0].box.z * 0.5f;
+        }
+
+        Feed(320);
+        Check(Mathf.Abs(Shown(1 / 60f) - 320) < 0.01f, "follow: a new track slid in instead of snapping");
+        Check(metadata[1] == 1, "follow: the centred track is not marked as centre");
+        Feed(360);
+        float eased = Shown(1 / 60f);
+        Check(eased > 320.5f && eased < 359.5f, $"follow: a moved track jumped or froze ({eased})");
+        for (int i = 0; i < 60; i++) eased = Shown(1 / 60f);
+        Check(Mathf.Abs(eased - 360) < 0.01f, $"follow: never converged on the track ({eased})");
+
+        settings.displayTime = 0;
+        Feed(400);
+        Check(Mathf.Abs(Shown(1 / 60f) - 400) < 0.01f, "follow: displayTime 0 did not snap");
+        passed.Add("display smoothing snaps new tracks and eases moved ones");
+    }
+
+    // Single character: only the most confident track is drawn and becomes the centre; a rival that
+    // is only slightly better does not take over, a clearly better one does.
+    static void ValidateSingleBest()
+    {
+        var settings = new StabilizerSettings
+        {
+            enabled = true, minHits = 1, maxMisses = 2,
+            matchIou = 0.1f, smoothing = 0f, classScore = 0.6f, displayTime = 0, singleBest = true,
+        };
+        using var post = new GpuYoloPostprocessor(8);
+        var metadata = new uint[3];
+        var shown = new GpuPoseDetection[8];
+        var center = new GpuPoseDetection[1];
+        int Shown(float a, float b)
+        {
+            var data = Fixture(2);
+            Box(data, 0, 2, a, 150, 320, 100, 100);
+            Box(data, 1, 5, b, 490, 320, 100, 100);
+            using var input = new ComputeBuffer(data.Length, sizeof(float));
+            input.SetData(data);
+            post.Process(input, 2, 0.1f, 0.35f, 0.6f, 0.6f, 10, new Vector2(1, -2), settings);
+            post.Follow(1 / 60f);
+            post.DisplayMetadata.GetData(metadata);
+            post.DisplayDetections.GetData(shown);
+            post.Center.GetData(center);
+            Check(metadata[0] == 1, $"single: drew {metadata[0]} characters");
+            Check(center[0].info.y == shown[0].info.y, "single: centre is not the drawn character");
+            return (int)shown[0].info.y;
+        }
+        Check(Shown(0.9f, 0.7f) == 2, "single: did not pick the most confident track");
+        Check(Shown(0.85f, 0.9f) == 2, "single: switched on a marginally better rival");
+        Check(Shown(0.7f, 0.95f) == 5, "single: kept a clearly worse track");
+        passed.Add("single character shows and pronounces the most confident track, with hysteresis");
+    }
+
     public static void Run()
     {
         PrepareInferenceLifecycle();
@@ -197,6 +275,8 @@ public static class BodyOracleGpuValidation
             Compare("8400 candidates across thread groups", stress);
             Compare("bounded output", touching, 1);
             ValidateStabilizer();
+            ValidateFollow();
+            ValidateSingleBest();
             ValidateRendering(single, false);
             ValidateRendering(single, true);
             ValidateModel();

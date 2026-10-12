@@ -86,7 +86,7 @@ public sealed class BodyOracleSimulatorReplay : MonoBehaviour
 
     void Update()
     {
-        displayCamera.orthographicSize = detector.ProjectionPlaneHeight * .5f / Mathf.Min(1, displayCamera.aspect);
+        displayCamera.orthographicSize = detector.RecognisedPlaneHeight * .5f / Mathf.Min(1, displayCamera.aspect);
         if (detector.CameraPreview != null) previewMaterial.SetTexture("_BaseMap", detector.CameraPreview);
         Current.processedFrames = (int)(detector.ProcessedFrames - frameStart);
         Current.videoFrame = video.frame;

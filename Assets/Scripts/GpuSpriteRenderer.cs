@@ -57,7 +57,9 @@ public sealed class GpuSpriteRenderer : IDisposable
     public void Draw(GpuYoloPostprocessor results, Transform parent, float planeDistance, bool onlyCenter, int layer)
     {
         if (results == null) return;
-        Prepare(results, parent.localToWorldMatrix, planeDistance, onlyCenter);
+        // Inference is slower than the display; ease the characters between results every frame.
+        results.Follow(Time.unscaledDeltaTime);
+        Prepare(results.DisplayDetections, results.DisplayMetadata, parent.localToWorldMatrix, planeDistance, onlyCenter);
         // Model predictions are not clamped to the input image. A conservative bound
         // prevents CPU frustum culling from dropping valid off-centre detections.
         var bounds = new Bounds(parent.position, Vector3.one * 10000);
@@ -85,7 +87,7 @@ public sealed class GpuSpriteRenderer : IDisposable
     // Useful for deterministic video validation without running a webcam or changing a scene.
     public void Record(CommandBuffer commands, GpuYoloPostprocessor results, Matrix4x4 poseToWorld, float planeDistance)
     {
-        Prepare(results, poseToWorld, planeDistance, false);
+        Prepare(results.Detections, results.Metadata, poseToWorld, planeDistance, false);
         for (int c = 0; c < 20; c++)
         {
             if (meshes[c] == null) continue;
@@ -97,15 +99,15 @@ public sealed class GpuSpriteRenderer : IDisposable
         }
     }
 
-    void Prepare(GpuYoloPostprocessor results, Matrix4x4 poseToWorld, float planeDistance, bool onlyCenter)
+    void Prepare(ComputeBuffer detections, ComputeBuffer metadata, Matrix4x4 poseToWorld, float planeDistance, bool onlyCenter)
     {
         if (useIndirect)
         {
-            argumentShader.SetBuffer(argumentKernel, "_Metadata", results.Metadata);
+            argumentShader.SetBuffer(argumentKernel, "_Metadata", metadata);
             argumentShader.Dispatch(argumentKernel, 1, 1, 1);
         }
-        properties.SetBuffer("_Detections", results.Detections);
-        properties.SetBuffer("_Metadata", results.Metadata);
+        properties.SetBuffer("_Detections", detections);
+        properties.SetBuffer("_Metadata", metadata);
         properties.SetMatrix("_PoseToWorld", poseToWorld);
         properties.SetFloat("_PlaneDistance", planeDistance);
         properties.SetInt("_OnlyCenter", onlyCenter ? 1 : 0);

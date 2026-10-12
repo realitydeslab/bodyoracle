@@ -7,6 +7,7 @@ Shader "Custom/CropShader"
         _Rotate ("Rotate", Float) = 0.0
         _VideoRotation ("Webcam Rotation", Float) = 0.0
         _VerticalMirror ("Webcam Vertical Mirror", Float) = 0.0
+        _CropScale ("Crop Scale", Float) = 1.0
     }
     SubShader
     {
@@ -45,6 +46,7 @@ Shader "Custom/CropShader"
             float _Rotate;
             float _VideoRotation;
             float _VerticalMirror;
+            float _CropScale;
             v2f vert (appdata v)
             {
                 v2f o;
@@ -96,6 +98,8 @@ Shader "Custom/CropShader"
                     uv = float2(1.0 - uv.y, uv.x);
                 }
                 float2 squareUV = extractCenterSquare(uv, _AspectRatio);
+                // A smaller square about the same centre: the model sees the middle of the frame.
+                squareUV = 0.5 + (squareUV - 0.5) * _CropScale;
                 if (_VerticalMirror > 0.5) squareUV.y = 1.0 - squareUV.y;
                 
                 return tex2D(_MainTex, squareUV);

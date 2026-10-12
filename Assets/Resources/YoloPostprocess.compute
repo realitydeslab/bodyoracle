@@ -2,6 +2,7 @@
 #pragma kernel Suppress
 #pragma kernel BuildDrawArguments
 #pragma kernel Stabilize
+#pragma kernel Follow
 
 // All records use three float4s (48 bytes), matching GpuPoseDetection in C#.
 struct Detection
@@ -257,4 +258,91 @@ void Stabilize(uint3 id : SV_DispatchThreadID)
         if (visible >= (uint)_MaxDetections) break;
     }
     _Metadata[0] = visible;
+}
+
+// Per-rendered-frame display smoothing. Inference runs at a fraction of the display rate, so the
+// confirmed tracks only move in steps. _Display holds one drawn record per track slot and eases it
+// toward its track every frame; a track appearing for the first time snaps instead of sliding in.
+// The result is published compacted, in the same layout as _Detections and _Metadata.
+// With _SingleBest only the most confident track is shown, and _Center becomes that track so a
+// pronunciation reads the character on screen. _ShownMetadata[2] remembers it (slot + 1): another
+// track must beat it by _BestMargin to take over, so two similar scores do not flicker.
+RWStructuredBuffer<Detection> _Display;
+RWStructuredBuffer<Detection> _Shown;
+RWStructuredBuffer<uint> _ShownMetadata;
+float _FollowBlend; // 1 - exp(-deltaTime / smoothingTime), computed on the CPU
+int _SingleBest;
+float _BestMargin;
+
+[numthreads(1, 1, 1)]
+void Follow(uint3 id : SV_DispatchThreadID)
+{
+    int best = -1;
+    float bestScore = -1;
+    for (uint t = 0; t < (uint)_MaxDetections; ++t)
+    {
+        Detection track = _Tracks[t];
+        Detection shown = _Display[t];
+        if (track.info.x < 0 || track.extra.z < (float)_TrackMinHits)
+        {
+            shown.info.x = -1;
+            _Display[t] = shown;
+            continue;
+        }
+        // A lower hit count means the slot now holds a different person (Follow can skip frames
+        // while drawing is paused), so that track snaps as well.
+        if (shown.info.x < 0 || track.extra.z < shown.extra.z)
+            shown = track;
+        else
+        {
+            shown.box = lerp(shown.box, track.box, _FollowBlend);
+            shown.info.zw = lerp(shown.info.zw, track.info.zw, _FollowBlend);
+            shown.extra.x = lerp(shown.extra.x, track.extra.x, _FollowBlend);
+            shown.info.xy = track.info.xy;
+            shown.extra.yzw = track.extra.yzw;
+        }
+        _Display[t] = shown;
+        if (track.info.x > bestScore) { bestScore = track.info.x; best = (int)t; }
+    }
+
+    if (_SingleBest != 0)
+    {
+        int previous = (int)_ShownMetadata[2] - 1;
+        if (previous >= 0 && _Display[previous].info.x >= 0 && _Tracks[previous].info.x >= bestScore - _BestMargin)
+            best = previous;
+        Detection chosen = (Detection)0;
+        chosen.info.y = -1;
+        if (best >= 0)
+        {
+            chosen = _Tracks[best];
+            _Shown[0] = _Display[best];
+        }
+        _Center[0] = chosen;
+        _ShownMetadata[0] = best >= 0 ? 1 : 0;
+        _ShownMetadata[1] = best >= 0 ? 1 : 0;
+        _ShownMetadata[2] = (uint)(best + 1);
+        return;
+    }
+
+    uint visible = 0;
+    float centerDistance = 3.402823466e+38;
+    _ShownMetadata[1] = 0;
+    for (uint v = 0; v < (uint)_MaxDetections; ++v)
+    {
+        Detection shown = _Display[v];
+        if (shown.info.x < 0) continue;
+        Detection track = _Tracks[v];
+        _Shown[visible] = shown;
+        // Same centre rule as Stabilize, on the track, so the highlighted character matches _Center.
+        float2 center = track.box.xy + track.box.zw * 0.5;
+        float distance = dot(center - 320, center - 320);
+        if (all(track.box.xy <= 320) && all(track.box.xy + track.box.zw > 320) && distance < centerDistance)
+        {
+            centerDistance = distance;
+            _ShownMetadata[1] = visible + 1;
+        }
+        visible++;
+    }
+    _ShownMetadata[0] = visible;
+    _ShownMetadata[2] = 0;
 }
