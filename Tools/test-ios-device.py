@@ -38,6 +38,8 @@ def main():
     parser.add_argument("--mode", choices=("replay", "camera"), default="replay")
     parser.add_argument("--team", default="KR9H35SQQ9", help="Apple development signing team")
     parser.add_argument("--skip-build", action="store_true")
+    parser.add_argument("--stereo", action="store_true", help="Camera mode only: run in HoloKit stereo rendering")
+    parser.add_argument("--plane-distance", type=float, help="Override the characters' plane distance in metres")
     parser.add_argument("--install-only", action="store_true", help="Build and install without launching (useful while the phone is locked)")
     args = parser.parse_args()
     replay = args.mode == "replay"
@@ -71,6 +73,10 @@ def main():
     run_id = str(uuid.uuid4())
     launch_env = dict(os.environ, DEVICECTL_CHILD_BODYORACLE_RUN_ID=run_id)
     launch_env["DEVICECTL_CHILD_BODYORACLE_AUTOTEST" if replay else "DEVICECTL_CHILD_BODYORACLE_CAMERA_TEST"] = "1"
+    if args.stereo and not replay:
+        launch_env["DEVICECTL_CHILD_BODYORACLE_STEREO"] = "1"
+    if args.plane_distance:
+        launch_env["DEVICECTL_CHILD_BODYORACLE_PLANE_DISTANCE"] = str(args.plane_distance)
     local_report = results / "report.json"
     incoming_report = results / "incoming-report.json"
     if local_report.exists():
@@ -82,7 +88,8 @@ def main():
         process = subprocess.Popen(["xcrun", "devicectl", "device", "process", "launch", "--device", args.device,
                                     "--terminate-existing", "--console", bundle, "--",
                                     "-bodyOracleAutoTest" if replay else "-bodyOracleCameraTest",
-                                    "-bodyOracleRunId", run_id], stdout=console, stderr=subprocess.STDOUT, env=launch_env)
+                                    "-bodyOracleRunId", run_id] + (["-bodyOracleStereo"] if args.stereo and not replay else []),
+                                   stdout=console, stderr=subprocess.STDOUT, env=launch_env)
         recorder = None
         try:
             # Capture only this application's test run, after launching it.
