@@ -55,11 +55,12 @@ Use these application scenes under `Assets/Scenes`, rather than the SDK sample s
 
 1. Open [DesktopWebcam.unity](Assets/Scenes/DesktopWebcam.unity). On its `Yolo` component, assign `Assets/Models/3-1-epoch120-last.onnx` to **Model Asset** if the field is empty, then save the scene. The current desktop scene needs this assignment before recognition can start.
 2. Press **Play** in Unity, or build the `Mac` profile from **File → Build Profiles**.
-3. Allow camera access. Select a webcam from the dropdown if needed, then stand far enough back for your whole pose to fit in the square preview.
+3. Allow camera access, then stand far enough back for your whole pose to fit in the square preview. The first camera macOS reports is used.
 4. Change your pose and watch the character overlay respond.
-5. Centre a person under the crosshair and press **Space** or **Play character** to play their sound. Recognition resumes when playback finishes.
+5. Stand inside the grid. Hold a pose for one second, or press **Space**, to hear its character; the pronunciation appears above the grid. The pronunciation is highlighted each time it is spoken, and recognition resumes when playback finishes. Keep holding for three more seconds to hear it again, or change pose to hear another.
+6. **View → Enter Full Screen** (Control-Command-F) fills the display. Press **D** to outline the area the model actually recognises; the guide frame in the middle is only a visual cue.
 
-**Show camera** toggles the preview without interrupting recognition. The display and model use the same square crop, including camera rotation and vertical-flip correction; the preview is not horizontally mirrored.
+The camera fills the window; status text appears only for camera problems. The display and model use the same square crop, including camera rotation and vertical-flip correction; the preview is not horizontally mirrored.
 
 If camera access is denied, enable it for Body Oracle (or Unity Editor) in **System Settings → Privacy & Security → Camera**, then restart. A missing or denied camera produces a status message instead of an exception.
 

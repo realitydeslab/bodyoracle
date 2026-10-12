@@ -33,6 +33,14 @@ public class SpriteVisualizer : MonoBehaviour
     [SerializeField] private AudioClip[] soundClips; // 每个类别对应的音频
     
     [Header("UI Panel")]
+    [Tooltip("Grid drawn in 3D on the characters' plane, so both eyes see it at the same depth as them.")]
+    [SerializeField] private Sprite guideFrame;
+    [SerializeField, Range(.3f, 1)] private float guideScale = .8f; // of the recognised square
+    // Camera-locked content (guide, debug outline) parented straight to the rendering camera, with
+    // each item's position on the plane before any Stereo shift.
+    private readonly Dictionary<Transform, Vector3> viewLocked = new Dictionary<Transform, Vector3>();
+    [Tooltip("Typical distance of the people being recognised, for the Stereo parallax correction (m).")]
+    [SerializeField, Min(.3f)] private float stereoSubjectDistance = 2f;
     [SerializeField] private GameObject panel_mono;
     [SerializeField] private GameObject panel_stereo;
 
@@ -58,6 +66,9 @@ public class SpriteVisualizer : MonoBehaviour
     private AudioSource audioSource;
     // 是否正在播放音频
     private bool isPlayingAudio = false;
+    // Holding a pose for one second pronounces it without pressing the button.
+    private readonly PoseHold poseHold = new PoseHold(1, 3);
+    private float nextGateLog;
     public bool IsPlayingAudio => isPlayingAudio;
     public int SelectedClass => currentSoundSpriteClassId;
     // 当前显示的声音Sprite的类别ID
@@ -114,6 +125,9 @@ public class SpriteVisualizer : MonoBehaviour
             return;
         }
         
+        CreateGuide();
+        AttachToView(mainCameraTransform);
+
         // 添加音频源
         audioSource = gameObject.AddComponent<AudioSource>();
         audioSource.playOnAwake = false;
@@ -155,13 +169,22 @@ public class SpriteVisualizer : MonoBehaviour
 
         // 检查音频播放状态
         CheckAudioPlaybackStatus();
+        if (!isPlayingAudio && !selectionPending && !isInSleepMode)
+            poseHold.Update(yoloDetector, detection => PronounceDetection(detection.predictedClassId));
+        if (Debug.isDebugBuild && Time.unscaledTime >= nextGateLog)
+        {
+            nextGateLog = Time.unscaledTime + 1;
+            Debug.Log($"[AutoPronounce] mode={(lastRenderModeMono ? "Mono" : "Stereo")} playing={isPlayingAudio} selecting={selectionPending} sleeping={isInSleepMode} detecting={DetectionData.isDetecting} hasFrame={yoloDetector != null && yoloDetector.HasFrame}");
+        }
 
 #if UNITY_IOS && !UNITY_EDITOR
         // 根据渲染模式切换Parent Constraint的source
         UpdateParentConstraints();
         
         // 监控设备移动
-        if (enableMovementMonitoring && isInitialized)
+        // Sleep saves power when the phone is put down in Mono. A worn HoloKit barely moves while its
+        // wearer watches someone pose, so Stereo never sleeps.
+        if (enableMovementMonitoring && isInitialized && lastRenderModeMono)
         {
             MonitorDeviceMovement();
         }
@@ -391,7 +414,11 @@ public class SpriteVisualizer : MonoBehaviour
                 Debug.Log($"渲染模式已变更为: {(isMonoMode ? "Mono" : "Stereo")}");
             }
 
+            if (!isMonoMode && isInSleepMode) WakeUpApplication();
+            lastMovementTime = Time.time;
             Transform sourceTransform = isMonoMode ? mainCameraTransform : centerEyePoseTransform;
+            Vector3 shift = isMonoMode ? Vector3.zero : StereoParallaxShift();
+            AttachToView(sourceTransform, shift);
             ParentConstraint constraint = constraintObject;
             if (constraint.sourceCount > 0) {
                 constraint.RemoveSource(0);
@@ -400,6 +427,8 @@ public class SpriteVisualizer : MonoBehaviour
                 sourceTransform = sourceTransform,
                 weight = 1.0f
             });
+            constraint.SetTranslationOffset(0, shift);
+            constraint.SetRotationOffset(0, Vector3.zero);
             constraint.constraintActive = true;
             if (showDebugInfo)
             {
@@ -431,9 +460,101 @@ public class SpriteVisualizer : MonoBehaviour
         {
             selectionPending = false;
             if (this == null || !isActiveAndEnabled || isInSleepMode || !found) return;
-            ShowSoundSpriteAndPlayAudio(detection.predictedClassId);
-            if (isPlayingAudio) DetectionData.isDetecting = false;
+            poseHold.MarkSpoken(detection.predictedClassId);
+            PronounceDetection(detection.predictedClassId);
         });
+    }
+
+    void PronounceDetection(int classId)
+    {
+        if (this == null || !isActiveAndEnabled || isInSleepMode || isPlayingAudio) return;
+        ShowSoundSpriteAndPlayAudio(classId);
+        if (isPlayingAudio) DetectionData.isDetecting = false;
+    }
+
+    // A child of the rendering camera takes the camera's pose at render time. Following it through
+    // the ParentConstraint would use the earlier pose of the frame and make the guide tremble.
+    void AttachToView(Transform view, Vector3 shift = default)
+    {
+        if (view == null) return;
+        foreach (var item in viewLocked)
+        {
+            if (item.Key == null) continue;
+            item.Key.SetParent(view, false);
+            item.Key.localPosition = item.Value + shift;
+        }
+    }
+
+    // In Stereo the characters are drawn from the centre eye but detected by the rear camera, which
+    // sits up and to one side of the eyes (HoloKit's camera-to-centre-eye offset). A person at the
+    // subject distance is seen from the camera shifted by offset / distance, so the plane moves back
+    // by that angle: on a plane at distance d the shift is -offset * d / subjectDistance.
+    Vector3 StereoParallaxShift()
+    {
+        Vector3 cameraToEye = centerEyePoseTransform.localPosition;
+        return new Vector3(-cameraToEye.x, -cameraToEye.y, 0) * (projectionPlaneDistance / stereoSubjectDistance);
+    }
+
+    // The guide grid and its prompt are 3D content on the characters' plane, not per-eye UI: in Stereo
+    // both eyes then converge on them at the same depth as the characters, so they fuse.
+    void CreateGuide()
+    {
+        float size = yoloDetector.RecognisedPlaneHeight * guideScale;
+        Vector2 centre = yoloDetector.ProjectionPlaneOffset;
+        var guide = new GameObject("Guide (3D)") { layer = gameObject.layer };
+        guide.transform.SetParent(transform, false);
+        guide.transform.localPosition = new Vector3(centre.x, centre.y, projectionPlaneDistance);
+        viewLocked.Add(guide.transform, guide.transform.localPosition);
+        if (guideFrame != null)
+        {
+            var grid = new GameObject("Grid") { layer = gameObject.layer };
+            grid.transform.SetParent(guide.transform, false);
+            grid.AddComponent<SpriteRenderer>().sprite = guideFrame;
+            grid.transform.localScale = Vector3.one * (size / guideFrame.bounds.size.y);
+        }
+        var prompt = new GameObject("Prompt") { layer = gameObject.layer };
+        prompt.transform.SetParent(guide.transform, false);
+        prompt.transform.localPosition = new Vector3(0, -size * .58f, 0);
+        var text = prompt.AddComponent<TextMesh>();
+        text.text = "Place people in the middle of the grid.";
+        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        prompt.GetComponent<MeshRenderer>().sharedMaterial = text.font.material;
+        text.anchor = TextAnchor.UpperCenter;
+        text.alignment = TextAlignment.Center;
+        text.fontSize = 64;                        // glyph resolution
+        text.characterSize = size * .045f / 6.4f;  // a line about 4.5% of the grid tall
+        text.color = Color.white;
+        CreatePronunciation(guide.transform, size);
+    }
+
+    // The pronunciation sits just above the grid on the same plane, in a world-space canvas so the
+    // KTV wipe (a filled UI Image) still works. Mono and Stereo share it: both eyes render it from
+    // their own position, so it fuses with the grid instead of being two separately placed images.
+    void CreatePronunciation(Transform guide, float gridSize)
+    {
+        const float canvasWidth = 1000, canvasHeight = 250; // matches the pronunciation images' ~4:1 aspect
+        float width = gridSize * .6f;
+        float height = width * canvasHeight / canvasWidth;
+        var canvasObject = new GameObject("Pronunciation (3D)", typeof(RectTransform)) { layer = gameObject.layer };
+        var rect = (RectTransform)canvasObject.transform;
+        rect.SetParent(guide, false);
+        rect.sizeDelta = new Vector2(canvasWidth, canvasHeight);
+        rect.localScale = Vector3.one * (width / canvasWidth);
+        rect.localPosition = new Vector3(0, gridSize * .5f + gridSize * .01f + height * .5f, 0);
+        canvasObject.AddComponent<Canvas>().renderMode = RenderMode.WorldSpace;
+
+        var symbol = new GameObject("Symbol", typeof(RectTransform)) { layer = gameObject.layer };
+        var symbolRect = (RectTransform)symbol.transform;
+        symbolRect.SetParent(rect, false);
+        symbolRect.anchorMin = Vector2.zero;
+        symbolRect.anchorMax = Vector2.one;
+        symbolRect.offsetMin = symbolRect.offsetMax = Vector2.zero;
+        var image = symbol.AddComponent<Image>();
+        image.preserveAspect = true;
+        image.raycastTarget = false;
+        symbol.SetActive(false);
+        // Every mode now shows this one image; the per-eye UI images are no longer used.
+        soundSpriteObject_mono = soundSpriteObject_left = soundSpriteObject_right = symbol;
     }
 
     // 录制按钮点击事件
@@ -493,6 +614,9 @@ public class SpriteVisualizer : MonoBehaviour
         audioSource.clip = soundClips[classId];
         audioSource.Play();
         isPlayingAudio = true;
+        // KTV-style progress across the pronunciation while the sound plays.
+        if (renderer != null) KaraokeWipe.Attach(renderer).Play(audioSource);
+        if (renderer1 != null) KaraokeWipe.Attach(renderer1).Play(audioSource);
         
         // 记录当前显示的声音Sprite的类别ID
         currentSoundSpriteClassId = classId;
