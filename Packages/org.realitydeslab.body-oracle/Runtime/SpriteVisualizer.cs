@@ -39,6 +39,12 @@ public class SpriteVisualizer : MonoBehaviour
     // Camera-locked content (guide, debug outline) parented straight to the rendering camera, with
     // each item's position on the plane before any Stereo shift.
     private readonly Dictionary<Transform, Vector3> viewLocked = new Dictionary<Transform, Vector3>();
+    // The guide (grid, prompt below, pronunciation above) and its half extents in units of the grid
+    // size, from CreateGuide and CreatePronunciation; Mono shrinks it to fit the screen.
+    private Transform guide;
+    private float guideSize;
+    private Camera monoCamera;
+    private const float GuideHalfHeight = .66f, GuideHalfWidth = .5f, GuideScreenMargin = .95f;
     [Tooltip("Typical distance of the people being recognised, for the Stereo parallax correction (m).")]
     [SerializeField, Min(.3f)] private float stereoSubjectDistance = 2f;
     [SerializeField] private GameObject panel_mono;
@@ -449,8 +455,29 @@ public class SpriteVisualizer : MonoBehaviour
     
     void LateUpdate()
     {
+        FitGuideToScreen();
         if (!isInSleepMode && yoloDetector != null && yoloDetector.isActiveAndEnabled && yoloDetector.HasFrame)
             gpuSprites?.Draw(yoloDetector.GpuResults, transform, projectionPlaneDistance, isPlayingAudio, gameObject.layer);
+    }
+
+    // The Mono screen crops ARKit's 4:3 image, so in landscape the grid nearly fills the screen height
+    // and the pronunciation above it and the prompt below it fell off the edges. Mono shrinks the whole
+    // guide about its centre until it fits the camera's view of the plane; Stereo keeps it at full size.
+    void FitGuideToScreen()
+    {
+        if (guide == null) return;
+        float scale = 1;
+        if (monoCamera == null && mainCameraTransform != null) monoCamera = mainCameraTransform.GetComponent<Camera>();
+        if (lastRenderModeMono && monoCamera != null && guideSize > 0)
+        {
+            Matrix4x4 projection = monoCamera.projectionMatrix;
+            Vector2 centre = yoloDetector.ProjectionPlaneOffset;
+            float halfHeight = projectionPlaneDistance / projection.m11 - Mathf.Abs(centre.y);
+            float halfWidth = projectionPlaneDistance / projection.m00 - Mathf.Abs(centre.x);
+            scale = Mathf.Clamp01(GuideScreenMargin * Mathf.Min(halfHeight / (GuideHalfHeight * guideSize),
+                                                                halfWidth / (GuideHalfWidth * guideSize)));
+        }
+        guide.localScale = Vector3.one * scale;
     }
 
     public void OnTriggerButtonClicked()
@@ -501,19 +528,20 @@ public class SpriteVisualizer : MonoBehaviour
     {
         float size = yoloDetector.RecognisedPlaneHeight * guideScale;
         Vector2 centre = yoloDetector.ProjectionPlaneOffset;
-        var guide = new GameObject("Guide (3D)") { layer = gameObject.layer };
-        guide.transform.SetParent(transform, false);
-        guide.transform.localPosition = new Vector3(centre.x, centre.y, projectionPlaneDistance);
-        viewLocked.Add(guide.transform, guide.transform.localPosition);
+        guide = new GameObject("Guide (3D)") { layer = gameObject.layer }.transform;
+        guideSize = size;
+        guide.SetParent(transform, false);
+        guide.localPosition = new Vector3(centre.x, centre.y, projectionPlaneDistance);
+        viewLocked.Add(guide, guide.localPosition);
         if (guideFrame != null)
         {
             var grid = new GameObject("Grid") { layer = gameObject.layer };
-            grid.transform.SetParent(guide.transform, false);
+            grid.transform.SetParent(guide, false);
             grid.AddComponent<SpriteRenderer>().sprite = guideFrame;
             grid.transform.localScale = Vector3.one * (size / guideFrame.bounds.size.y);
         }
         var prompt = new GameObject("Prompt") { layer = gameObject.layer };
-        prompt.transform.SetParent(guide.transform, false);
+        prompt.transform.SetParent(guide, false);
         prompt.transform.localPosition = new Vector3(0, -size * .58f, 0);
         var text = prompt.AddComponent<TextMesh>();
         text.text = "Place people in the middle of the grid.";
@@ -524,7 +552,7 @@ public class SpriteVisualizer : MonoBehaviour
         text.fontSize = 64;                        // glyph resolution
         text.characterSize = size * .045f / 6.4f;  // a line about 4.5% of the grid tall
         text.color = Color.white;
-        CreatePronunciation(guide.transform, size);
+        CreatePronunciation(guide, size);
     }
 
     // The pronunciation sits just above the grid on the same plane, in a world-space canvas so the

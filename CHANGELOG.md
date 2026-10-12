@@ -46,6 +46,12 @@ iOS build 5. Requires Unity 6000.3.24f1, HoloKit Unity SDK `0.6.0-preview.1` (`5
   40 / 30 fps when the phone is hot. Unity's own thermal FPS cap is off, as the SDK requires.
 - `Tools/testflight.py` exports a signed ipa locally before uploading, and accepts an App Store
   Connect API key (`--api-key-id`, `--api-issuer`) or a manual App Store profile.
+- The app moved into the embedded package `Packages/org.realitydeslab.body-oracle` (Runtime,
+  Editor, Tests with assembly definitions; scenes, model, sprites, audio, shaders, macOS plug-in),
+  laid out like EchoVision's. `Assets/` keeps only project settings.
+- No Unity splash screen.
+- Mono: the guide grid, its prompt and the pronunciation shrink together to fit the screen, so
+  the prompt below the grid is no longer cut off in landscape. Stereo keeps the full size.
 
 ## 0.2.1 — iOS build 3 (2026-09-22)
 
