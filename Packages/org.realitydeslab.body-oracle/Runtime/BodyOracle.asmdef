@@ -1,0 +1,13 @@
+{
+  "name": "BodyOracle",
+  "references": [
+    "HoloKit",
+    "Unity.InferenceEngine",
+    "Unity.XR.ARFoundation",
+    "Unity.XR.ARSubsystems",
+    "Unity.InputSystem",
+    "UnityEngine.UI",
+    "Unity.TextMeshPro"
+  ],
+  "autoReferenced": true
+}

@@ -306,6 +306,19 @@
       },
       "hash": "5a16342dc11f479b2aaf418a4826cf3ac7c8bd91"
     },
+    "org.realitydeslab.body-oracle": {
+      "version": "file:org.realitydeslab.body-oracle",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "io.holokit.unity-sdk": "0.6.0",
+        "com.unity.ai.inference": "2.6.1",
+        "com.unity.xr.arfoundation": "6.4.3",
+        "com.unity.inputsystem": "1.20.0",
+        "com.unity.render-pipelines.universal": "17.3.0",
+        "com.unity.ugui": "2.0.0"
+      }
+    },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",
       "depth": 0,

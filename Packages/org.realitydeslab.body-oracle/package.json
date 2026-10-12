@@ -1,0 +1,19 @@
+{
+  "name": "org.realitydeslab.body-oracle",
+  "displayName": "Body Oracle",
+  "version": "0.3.0",
+  "unity": "6000.3",
+  "description": "Body Oracle turns body poses into oracle-bone-inspired characters with an on-device YOLO pose model (Unity Inference Engine) and shows them through the HoloKit Unity SDK on iPhone (Mono and HoloKit Stereo) or with a Mac webcam.\n\nContains the app's scripts, scenes, model, character sprites, pronunciation audio, shaders, the macOS native plug-in and the validation tools.",
+  "author": {
+    "name": "Reality Design Lab",
+    "url": "https://reality.design"
+  },
+  "dependencies": {
+    "io.holokit.unity-sdk": "0.6.0",
+    "com.unity.ai.inference": "2.6.1",
+    "com.unity.xr.arfoundation": "6.4.3",
+    "com.unity.inputsystem": "1.20.0",
+    "com.unity.render-pipelines.universal": "17.3.0",
+    "com.unity.ugui": "2.0.0"
+  }
+}

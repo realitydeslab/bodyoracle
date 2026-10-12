@@ -1,0 +1,11 @@
+{
+  "name": "BodyOracle.DeviceTests",
+  "references": [
+    "BodyOracle",
+    "HoloKit",
+    "Unity.InferenceEngine",
+    "Unity.XR.ARFoundation",
+    "Unity.XR.ARSubsystems"
+  ],
+  "autoReferenced": false
+}

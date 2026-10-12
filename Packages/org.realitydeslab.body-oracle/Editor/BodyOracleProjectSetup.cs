@@ -14,8 +14,8 @@ using UnityEngine.UI;
 
 public static class BodyOracleProjectSetup
 {
-    public const string MacScene = "Assets/Scenes/DesktopWebcam.unity";
-    public const string IOSScene = "Assets/Scenes/StereoscopicRendering.unity";
+    public const string MacScene = "Packages/org.realitydeslab.body-oracle/Scenes/DesktopWebcam.unity";
+    public const string IOSScene = "Packages/org.realitydeslab.body-oracle/Scenes/StereoscopicRendering.unity";
     static Font font;
 
     public static void ConfigureRuntimePackages()
@@ -35,7 +35,7 @@ public static class BodyOracleProjectSetup
 
     public static void PrepareModel()
     {
-        var importer = AssetImporter.GetAtPath("Assets/Models/3-1-epoch120-last.onnx");
+        var importer = AssetImporter.GetAtPath("Packages/org.realitydeslab.body-oracle/Models/3-1-epoch120-last.onnx");
         var serialized = new SerializedObject(importer);
         var dimensions = serialized.FindProperty("dynamicDimConfigs");
         for (int i = 0; i < dimensions.arraySize; i++)
@@ -80,8 +80,8 @@ public static class BodyOracleProjectSetup
         preview.name = "Webcam Preview"; preview.transform.position = new Vector3(0,0,10);
         preview.transform.localScale = new Vector3(10,10,1);
         UnityEngine.Object.DestroyImmediate(preview.GetComponent<Collider>());
-        Directory.CreateDirectory("Assets/Materials");
-        const string materialPath = "Assets/Materials/DesktopWebcam.mat";
+        Directory.CreateDirectory("Packages/org.realitydeslab.body-oracle/Materials");
+        const string materialPath = "Packages/org.realitydeslab.body-oracle/Materials/DesktopWebcam.mat";
         var material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
         if (material == null)
         {

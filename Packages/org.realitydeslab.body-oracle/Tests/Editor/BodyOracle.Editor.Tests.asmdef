@@ -1,0 +1,21 @@
+{
+  "name": "BodyOracle.Editor.Tests",
+  "references": [
+    "BodyOracle",
+    "BodyOracle.Editor",
+    "BodyOracle.DeviceTests",
+    "HoloKit",
+    "Unity.InferenceEngine",
+    "Unity.XR.ARFoundation",
+    "Unity.XR.ARSubsystems",
+    "Unity.XR.Management",
+    "Unity.XR.Management.Editor",
+    "Unity.InputSystem",
+    "UnityEngine.UI",
+    "Unity.RenderPipelines.Core.Runtime",
+    "Unity.RenderPipelines.Universal.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ]
+}

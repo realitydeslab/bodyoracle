@@ -49,7 +49,7 @@ public static class BodyOracleVideoValidation
         var desktop=new SerializedObject(UnityEngine.Object.FindAnyObjectByType<DesktopOracle>());
         var spriteProperty=desktop.FindProperty("classSprites");
         var sprites=Enumerable.Range(0,spriteProperty.arraySize).Select(i=>(Sprite)spriteProperty.GetArrayElementAtIndex(i).objectReferenceValue).ToArray();
-        var asset=AssetDatabase.LoadAssetAtPath<ModelAsset>("Assets/Models/3-1-epoch120-last.onnx");
+        var asset=AssetDatabase.LoadAssetAtPath<ModelAsset>("Packages/org.realitydeslab.body-oracle/Models/3-1-epoch120-last.onnx");
         var model=BodyOracleModel.Load(asset);
         using var worker=new Worker(model,BackendType.GPUCompute);
         using var baseline=new Worker(ModelLoader.Load(asset),BackendType.GPUCompute);
@@ -59,7 +59,7 @@ public static class BodyOracleVideoValidation
         using var post=new GpuYoloPostprocessor(128);
         using var renderer=new GpuSpriteRenderer(sprites);
         using var commands=new CommandBuffer();
-        var cropMaterial=new Material(AssetDatabase.LoadAssetAtPath<Material>("Assets/Shader/Custom_CropShader.mat"));
+        var cropMaterial=new Material(AssetDatabase.LoadAssetAtPath<Material>("Packages/org.realitydeslab.body-oracle/Shader/Custom_CropShader.mat"));
         var source=new Texture2D(2,2,TextureFormat.RGBA32,false);
         var pixels=new Texture2D(640,640,TextureFormat.RGBA32,false);
         var crop=new RenderTexture(640,640,0,RenderTextureFormat.ARGB32); crop.Create();

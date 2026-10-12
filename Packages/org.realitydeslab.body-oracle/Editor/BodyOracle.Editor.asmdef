@@ -1,0 +1,18 @@
+{
+  "name": "BodyOracle.Editor",
+  "references": [
+    "BodyOracle",
+    "HoloKit",
+    "Unity.InferenceEngine",
+    "Unity.XR.ARFoundation",
+    "Unity.XR.Management",
+    "Unity.XR.Management.Editor",
+    "Unity.InputSystem",
+    "UnityEngine.UI",
+    "Unity.RenderPipelines.Core.Runtime",
+    "Unity.RenderPipelines.Universal.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ]
+}

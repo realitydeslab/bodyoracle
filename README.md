@@ -46,14 +46,14 @@ unity open . --editor-version 6000.3.24f1
 
 | Platform | Scene | Build profile | Capture |
 | --- | --- | --- | --- |
-| Mac | `Assets/Scenes/DesktopWebcam.unity` | `Mac` | Built-in, USB, or other desktop webcam |
-| iOS | `Assets/Scenes/StereoscopicRendering.unity` | `iOS` | ARKit camera; mono or HoloKit stereo |
+| Mac | `Packages/org.realitydeslab.body-oracle/Scenes/DesktopWebcam.unity` | `Mac` | Built-in, USB, or other desktop webcam |
+| iOS | `Packages/org.realitydeslab.body-oracle/Scenes/StereoscopicRendering.unity` | `iOS` | ARKit camera; mono or HoloKit stereo |
 
-Use these application scenes under `Assets/Scenes`, rather than the SDK sample scene under `Assets/Samples`.
+The app lives in the embedded package `Packages/org.realitydeslab.body-oracle` (scripts, scenes, model, sprites, audio, shaders, tests); `Assets/` keeps only project settings. Use the application scenes under `Packages/org.realitydeslab.body-oracle/Scenes`, rather than the SDK sample scene under `Assets/Samples`.
 
 ### Try it with a webcam
 
-1. Open [DesktopWebcam.unity](Assets/Scenes/DesktopWebcam.unity). On its `Yolo` component, assign `Assets/Models/3-1-epoch120-last.onnx` to **Model Asset** if the field is empty, then save the scene. The current desktop scene needs this assignment before recognition can start.
+1. Open [DesktopWebcam.unity](Packages/org.realitydeslab.body-oracle/Scenes/DesktopWebcam.unity). On its `Yolo` component, assign `Packages/org.realitydeslab.body-oracle/Models/3-1-epoch120-last.onnx` to **Model Asset** if the field is empty, then save the scene. The current desktop scene needs this assignment before recognition can start.
 2. Press **Play** in Unity, or build the `Mac` profile from **File → Build Profiles**.
 3. Allow camera access, then stand far enough back for your whole pose to fit in the square preview. The first camera macOS reports is used.
 4. Change your pose and watch the character overlay respond.
@@ -66,7 +66,7 @@ If camera access is denied, enable it for Body Oracle (or Unity Editor) in **Sys
 
 ### Run on iPhone and HoloKit
 
-1. Open [StereoscopicRendering.unity](Assets/Scenes/StereoscopicRendering.unity). In **File → Build Profiles**, select and activate the **iOS** profile.
+1. Open [StereoscopicRendering.unity](Packages/org.realitydeslab.body-oracle/Scenes/StereoscopicRendering.unity). In **File → Build Profiles**, select and activate the **iOS** profile.
 2. Build to an output directory such as `Builds/iOS`. Unity exports an Xcode project.
 3. Open the exported project in Xcode. Choose your signing team and an appropriate bundle identifier, select your connected iPhone, and build and run.
 4. Grant camera access. Start in handheld **Mono** mode and point the rear camera at someone whose body fits within the recognition view. Use **Pronounce** to hear the character associated with the detection nearest the centre.
@@ -116,7 +116,7 @@ flowchart LR
 4. Compute shaders read the channel-major output directly, classify 8,400 candidates, apply thresholds, perform exact greedy class-agnostic NMS, project the boxes, and select the centre detection.
 5. GPU-written indirect draw arguments and detection buffers drive character sprite meshes. Platforms without indirect drawing use fixed-capacity procedural instancing, with the GPU rejecting unused slots. C# creates the static meshes once; no per-detection GameObjects, per-frame tensor download, CPU transpose, CPU sort, or CPU NMS remain.
 
-The bundled demo model is [3-1-epoch120-last.onnx](Assets/Models/3-1-epoch120-last.onnx), referenced by the iOS scene and used for the desktop setup above. Its input is `[1, 3, 640, 640]` in NCHW layout, and its output is `[1, 75, 8400]`: 4 box channels, 20 class scores, and 51 keypoint channels. The current character display uses boxes and classes; it does not render the keypoints.
+The bundled demo model is [3-1-epoch120-last.onnx](Packages/org.realitydeslab.body-oracle/Models/3-1-epoch120-last.onnx), referenced by the iOS scene and used for the desktop setup above. Its input is `[1, 3, 640, 640]` in NCHW layout, and its output is `[1, 75, 8400]`: 4 box channels, 20 class scores, and 51 keypoint channels. The current character display uses boxes and classes; it does not render the keypoints.
 
 “GPU” refers to image processing, neural inference, detection postprocessing, and detection-dependent rendering. Unity still uses the CPU for camera callbacks, command submission, UI, audio, and application lifecycle. Clicking the sound button requests **one asynchronous 48-byte centre record**, holds inference until the callback, and then plays audio for that frame. No detection readback runs during normal recognition. A nonblocking graphics fence avoids queueing new inference while the preceding GPU frame is unfinished on devices that support both fences and asynchronous compute; other platforms keep work ordered on the graphics queue.
 
@@ -132,12 +132,12 @@ Start by duplicating the iOS application scene so its camera references, materia
 
 | Component | Responsibility | What to change |
 | --- | --- | --- |
-| [Yolo.cs](Assets/Scripts/Yolo.cs) | Camera input, preprocessing, inference scheduling, and centre selection | Model asset, thresholds, camera handling, and projection settings |
-| [BodyOracleModel.cs](Assets/Scripts/BodyOracleModel.cs) | Loads and specializes the ONNX graph | Input shape and graph setup for a different model |
-| [GpuYoloPostprocessor.cs](Assets/Scripts/GpuYoloPostprocessor.cs) and [YoloPostprocess.compute](Assets/Resources/YoloPostprocess.compute) | Decode predictions, remove duplicate boxes, and select the centre detection | Output layout, class count, confidence rules, and selection logic |
-| [GpuSpriteRenderer.cs](Assets/Scripts/GpuSpriteRenderer.cs) and [BodyOracleSprites.shader](Assets/Resources/BodyOracleSprites.shader) | Draw character meshes using GPU detection buffers | Visual appearance and placement |
-| [SpriteVisualizer.cs](Assets/Scripts/SpriteVisualizer.cs) | HoloKit presentation, sound, and movement monitoring | Character/audio assignments and iOS interaction |
-| [DesktopOracle.cs](Assets/Scripts/DesktopOracle.cs) | Webcam preview, camera selection, and desktop controls | Desktop prototyping interface |
+| [Yolo.cs](Packages/org.realitydeslab.body-oracle/Runtime/Yolo.cs) | Camera input, preprocessing, inference scheduling, and centre selection | Model asset, thresholds, camera handling, and projection settings |
+| [BodyOracleModel.cs](Packages/org.realitydeslab.body-oracle/Runtime/BodyOracleModel.cs) | Loads and specializes the ONNX graph | Input shape and graph setup for a different model |
+| [GpuYoloPostprocessor.cs](Packages/org.realitydeslab.body-oracle/Runtime/GpuYoloPostprocessor.cs) and [YoloPostprocess.compute](Packages/org.realitydeslab.body-oracle/Resources/YoloPostprocess.compute) | Decode predictions, remove duplicate boxes, and select the centre detection | Output layout, class count, confidence rules, and selection logic |
+| [GpuSpriteRenderer.cs](Packages/org.realitydeslab.body-oracle/Runtime/GpuSpriteRenderer.cs) and [BodyOracleSprites.shader](Packages/org.realitydeslab.body-oracle/Resources/BodyOracleSprites.shader) | Draw character meshes using GPU detection buffers | Visual appearance and placement |
+| [SpriteVisualizer.cs](Packages/org.realitydeslab.body-oracle/Runtime/SpriteVisualizer.cs) | HoloKit presentation, sound, and movement monitoring | Character/audio assignments and iOS interaction |
+| [DesktopOracle.cs](Packages/org.realitydeslab.body-oracle/Runtime/DesktopOracle.cs) | Webcam preview, camera selection, and desktop controls | Desktop prototyping interface |
 
 ### Change the visual or audio response
 
@@ -174,7 +174,7 @@ unity run . -- -executeMethod BodyOracleGpuValidation.Run -logFile Logs/gpu-vali
 
 Run with graphics enabled (do **not** use `-nographics`). The validator uses a real Metal device and compares GPU postprocessing to an independent CPU reference for empty/single frames, threshold boundaries, greedy suppression chains, equal-score ties, touching boxes, invalid predictions, 8,400 candidates, capacity limits, and buffer reuse. It checks pixels for both indirect and fixed-capacity procedural rendering, including stale-slot rejection, and runs the actual scene model, asserting zero runtime CPU fallback layers. Test-only readbacks are intentional. Results are written to `Logs/gpu-validation.txt`, `Logs/gpu-sprite-test.png`, and `Logs/gpu-sprite-procedural-test.png`.
 
-The validators live in `Assets/Tests/Editor/`, so they are excluded from players. Scene generation and build utilities live separately in `Assets/Editor/`.
+The validators live in `Packages/org.realitydeslab.body-oracle/Tests/Editor/` (an Editor-only assembly), so they are excluded from players. Scene generation and build utilities live separately in `Packages/org.realitydeslab.body-oracle/Editor/`.
 
 Rendering validation uses four different corner colors to detect inverted or mirrored sprites. The offscreen video compositor passes Unity's projection matrix directly to `CommandBuffer.SetViewProjectionMatrices`; pre-converting it with `GL.GetGPUProjectionMatrix` caused an extra vertical flip on Metal. The orientation regression fails with that old projection and passes with the corrected one.
 
@@ -221,7 +221,7 @@ python3 Tools/test-ios-device.py --device IPHONE_UDID --mode camera --team APPLE
 
 Replay installs a separate `org.realitydeslab.body-oracle.replay` test app. Camera validation builds the original iOS scene using its normal bundle identifier, so it updates that app if already installed. Allow camera permission and point the rear camera at a person. The camera test reports ARKit session state, processed frames and sampled detection counts; it also saves the screen and actual cropped model input. Its pass criterion is camera/GPU pipeline operation, not classification accuracy. Results go to `Logs/ios-device-replay/` and `Logs/ios-device-camera/`.
 
-Validation scripts live in `Assets/Tests/`. Runtime harnesses are compiled only into explicit test builds. Replay media is staged into StreamingAssets during export and removed afterwards; XR loader, SDK and bundle settings are restored. Simulator exports omit device-only libraries. The simulator-only head-tracking bridge aborts if accidentally called, so unsupported tracking cannot silently appear to work. `BodyOracleXcodeProject` removes HoloKit's obsolete `-ld64` linker flag from generated Xcode projects. App UI is an editor dependency of Inference Engine; the application itself uses UGUI. `ConfigureRuntimePackages` enables the package's supported `APP_UI_EDITOR_ONLY` define for Mac and iOS to omit the unused managed runtime and avoid a mobile EnhancedTouch initialization error observed with App UI 1.3.6 / Input System 1.20. The device runner also inspects console exceptions emitted before the runtime test harness starts, and refuses to launch while another application's devicectl console test is using the same phone.
+Validation scripts live in `Packages/org.realitydeslab.body-oracle/Tests/`. Runtime harnesses are compiled only into explicit test builds. Replay media is staged into StreamingAssets during export and removed afterwards; XR loader, SDK and bundle settings are restored. Simulator exports omit device-only libraries. The simulator-only head-tracking bridge aborts if accidentally called, so unsupported tracking cannot silently appear to work. `BodyOracleXcodeProject` removes HoloKit's obsolete `-ld64` linker flag from generated Xcode projects. App UI is an editor dependency of Inference Engine; the application itself uses UGUI. `ConfigureRuntimePackages` enables the package's supported `APP_UI_EDITOR_ONLY` define for Mac and iOS to omit the unused managed runtime and avoid a mobile EnhancedTouch initialization error observed with App UI 1.3.6 / Input System 1.20. The device runner also inspects console exceptions emitted before the runtime test harness starts, and refuses to launch while another application's devicectl console test is using the same phone.
 
 Verified on 22 September 2026 with Unity 6000.3.24f1:
 

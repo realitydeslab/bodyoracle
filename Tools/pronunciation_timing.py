@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write Assets/Resources/PronunciationTiming.json: when each clip voices its pronunciation.
+"""Write Packages/org.realitydeslab.body-oracle/Resources/PronunciationTiming.json: when each clip voices its pronunciation.
 
 Each clip says its pronunciation, then a spoken "repeat" cue shared by every clip, then repeats the
 pronunciation. Voiced segments are found from 10 ms energy windows; a segment counts as the
@@ -52,7 +52,7 @@ def spectrum(samples: np.ndarray) -> np.ndarray:
 
 def main() -> None:
     timing = {}
-    clips = sorted((ROOT / "Assets/Audios").glob("*.mp3"), key=lambda p: int(re.findall(r"\d+", p.stem)[0]))
+    clips = sorted((ROOT / "Packages/org.realitydeslab.body-oracle/Audios").glob("*.mp3"), key=lambda p: int(re.findall(r"\d+", p.stem)[0]))
     for clip in clips:
         samples = load(clip)
         segments = voiced(samples)
@@ -72,7 +72,7 @@ def main() -> None:
         timing[clip.stem] = spoken
         timing[clip.stem + "/cue"] = cues
         print(f"{clip.stem}: spoken {spoken} cue {cues}")
-    output = ROOT / "Assets/Resources/PronunciationTiming.json"
+    output = ROOT / "Packages/org.realitydeslab.body-oracle/Resources/PronunciationTiming.json"
     lines = [f"  {json.dumps(name)}: {json.dumps(spans)}" for name, spans in timing.items()]
     output.write_text("{\n" + ",\n".join(lines) + "\n}\n")
     print("Wrote", output.relative_to(ROOT))

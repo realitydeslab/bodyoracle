@@ -14,7 +14,7 @@ using UnityEngine.Video;
 
 public static class BodyOracleSimulatorBuild
 {
-    const string ScenePath = "Assets/Tests/Scenes/iOSVideoReplay.unity";
+    const string ScenePath = "Packages/org.realitydeslab.body-oracle/Tests/Scenes/iOSVideoReplay.unity";
     const string MediaPath = "Assets/StreamingAssets/BodyOracleReplay";
     static string Argument(string key, string fallback)
     {
@@ -161,7 +161,7 @@ public static class BodyOracleSimulatorBuild
         var preview = GameObject.CreatePrimitive(PrimitiveType.Quad);
         preview.name = "Simulated camera image"; preview.transform.position = new Vector3(0,0,10); preview.transform.localScale = new Vector3(10,10,1);
         UnityEngine.Object.DestroyImmediate(preview.GetComponent<Collider>());
-        preview.GetComponent<Renderer>().sharedMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/DesktopWebcam.mat");
+        preview.GetComponent<Renderer>().sharedMaterial = AssetDatabase.LoadAssetAtPath<Material>("Packages/org.realitydeslab.body-oracle/Materials/DesktopWebcam.mat");
         var overlay = new GameObject("Replay test controls", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
         overlay.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
         overlay.GetComponent<Canvas>().sortingOrder = 100;
@@ -184,7 +184,7 @@ public static class BodyOracleSimulatorBuild
         var replay = new GameObject("Simulator replay harness").AddComponent<BodyOracleSimulatorReplay>();
         replay.detector=detector;replay.presentation=visualizer;replay.video=player;replay.displayCamera=display;
         replay.preview=preview.GetComponent<Renderer>();replay.status=text;replay.soundButton=soundButton;replay.nextButton=next;
-        Directory.CreateDirectory("Assets/Tests/Scenes");
+        Directory.CreateDirectory("Packages/org.realitydeslab.body-oracle/Tests/Scenes");
         EditorSceneManager.SaveScene(scene,ScenePath);
         AssetDatabase.SaveAssets();
         Debug.Log("BODYORACLE_SIMULATOR_SCENE_READY");

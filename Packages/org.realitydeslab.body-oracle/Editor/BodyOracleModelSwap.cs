@@ -16,7 +16,7 @@ public static class BodyOracleModelSwap
     {
         BodyOracleProjectSetup.IOSScene,
         BodyOracleProjectSetup.MacScene,
-        "Assets/Tests/Scenes/iOSVideoReplay.unity",
+        "Packages/org.realitydeslab.body-oracle/Tests/Scenes/iOSVideoReplay.unity",
     };
 
     public static void Run()

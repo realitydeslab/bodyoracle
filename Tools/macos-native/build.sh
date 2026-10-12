@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Build the macOS native plug-in (zero-copy camera, full-screen menu) into Assets/Plugins/macOS/BodyOracleMac.bundle.
+# Build the macOS native plug-in (zero-copy camera, full-screen menu) into Packages/org.realitydeslab.body-oracle/Plugins/macOS/BodyOracleMac.bundle.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 unity_version="$(awk '/m_EditorVersion:/ {print $2}' ProjectSettings/ProjectVersion.txt)"
 plugin_api="${UNITY_PLUGIN_API:-/Applications/Unity/$unity_version/Unity.app/Contents/PluginAPI}"
-bundle="Assets/Plugins/macOS/BodyOracleMac.bundle"
+bundle="Packages/org.realitydeslab.body-oracle/Plugins/macOS/BodyOracleMac.bundle"
 mkdir -p "$bundle/Contents/MacOS"
 xcrun clang++ -std=c++17 -fobjc-arc -bundle -O2 -Wall -Werror \
   -arch arm64 -arch x86_64 -mmacosx-version-min=12.0 \

@@ -358,7 +358,7 @@ public static class BodyOracleGpuValidation
     static void ValidateModel()
     {
         BodyOracleProjectSetup.PrepareModel();
-        var asset = AssetDatabase.LoadAssetAtPath<ModelAsset>("Assets/Models/3-1-epoch120-last.onnx");
+        var asset = AssetDatabase.LoadAssetAtPath<ModelAsset>("Packages/org.realitydeslab.body-oracle/Models/3-1-epoch120-last.onnx");
         Check(asset != null, "Scene model missing");
         var model = BodyOracleModel.Load(asset);
         using var worker = new Worker(model, BackendType.GPUCompute);
