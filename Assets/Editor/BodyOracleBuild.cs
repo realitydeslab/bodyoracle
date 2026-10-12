@@ -20,6 +20,35 @@ public static class BodyOracleBuild
         Build(BuildTarget.iOS, BodyOracleProjectSetup.IOSScene, "Builds/iOSRelease", false, true);
     }
 
+    /// <summary>Bundle id of the App Store Connect app record. The Mac App Store build joins the iOS
+    /// record (universal purchase), so it uses the iOS id instead of the local-dev Standalone id.</summary>
+    const string StoreBundleId = "org.realitydeslab.body-oracle";
+
+    /// <summary>Mac App Store export for TestFlight. Emits an Xcode project so Tools/testflight_mac.py can
+    /// archive and sign it with Xcode's automatic signing. The store bundle id and the build number
+    /// (BODYORACLE_BUILD_NUMBER) apply only to this build; ProjectSettings keep their local-dev values.</summary>
+    public static void MacRelease()
+    {
+        string previousId = PlayerSettings.GetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Standalone);
+        string previousNumber = PlayerSettings.macOS.buildNumber;
+        bool previousXcode = UnityEditor.OSXStandalone.UserBuildSettings.createXcodeProject;
+        try
+        {
+            PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Standalone, StoreBundleId);
+            string number = Environment.GetEnvironmentVariable("BODYORACLE_BUILD_NUMBER");
+            if (!string.IsNullOrEmpty(number)) PlayerSettings.macOS.buildNumber = number;
+            UnityEditor.OSXStandalone.UserBuildSettings.createXcodeProject = true;
+            Build(BuildTarget.StandaloneOSX, BodyOracleProjectSetup.MacScene, "Builds/MacRelease", false, true);
+            Debug.Log("BODYORACLE_MAC_RELEASE " + StoreBundleId + " " + PlayerSettings.bundleVersion + " (" + PlayerSettings.macOS.buildNumber + ")");
+        }
+        finally
+        {
+            UnityEditor.OSXStandalone.UserBuildSettings.createXcodeProject = previousXcode;
+            PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Standalone, previousId);
+            PlayerSettings.macOS.buildNumber = previousNumber;
+        }
+    }
+
     static void Build(BuildTarget target, string scene, string defaultOutput, bool deviceValidation = false,
         bool release = false)
     {
@@ -38,6 +67,7 @@ public static class BodyOracleBuild
         if (report.summary.result != BuildResult.Succeeded)
             throw new Exception(target + " build failed: " + report.summary.result);
         Debug.Log("BODYORACLE_BUILD_PASS " + target + " " + output +
-            (release ? " release version " + PlayerSettings.bundleVersion + " (" + PlayerSettings.iOS.buildNumber + ")" : ""));
+            (release ? " release version " + PlayerSettings.bundleVersion + " (" +
+                (target == BuildTarget.iOS ? PlayerSettings.iOS.buildNumber : PlayerSettings.macOS.buildNumber) + ")" : ""));
     }
 }
