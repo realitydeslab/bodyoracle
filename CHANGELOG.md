@@ -40,6 +40,12 @@ iOS build 5. Requires Unity 6000.3.24f1, HoloKit Unity SDK `0.6.0-preview.1` (`5
 - Stereo never enters sleep mode; sleep after 30 s without movement now applies to Mono only.
 - Tracks show after 2 hits and survive 3 misses (were 3 and 5), matching the lower inference rate.
 - Mobile URP asset: HDR and shadows off.
+- Stereo keeps Body Oracle's own buttons (Pronounce, Start Recording, Mono), as EchoVision does: the
+  SDK 0.6 stereo bar is off (`HoloKitCameraManager.StereoBarItems = None`).
+- Stereo renders at 60 fps (`m_StereoFrameRate`), not the display's 120 Hz; the SDK still drops to
+  40 / 30 fps when the phone is hot. Unity's own thermal FPS cap is off, as the SDK requires.
+- `Tools/testflight.py` exports a signed ipa locally before uploading, and accepts an App Store
+  Connect API key (`--api-key-id`, `--api-issuer`) or a manual App Store profile.
 
 ## 0.2.1 — iOS build 3 (2026-09-22)
 
