@@ -12,7 +12,7 @@
     "com.unity.ugui": "2.0.0",
     "com.unity.visualscripting": "1.9.12",
     "com.unity.xr.arkit": "6.4.3",
-    "io.holokit.unity-sdk": "https://github.com/holokit/holokit-unity-sdk.git#5a16342dc11f479b2aaf418a4826cf3ac7c8bd91",
+    "io.holokit.unity-sdk": "https://github.com/holokit/holokit-unity-sdk.git#0.6.0-preview.1",
     "com.unity.modules.accessibility": "1.0.0",
     "com.unity.modules.adaptiveperformance": "1.0.0",
     "com.unity.modules.ai": "1.0.0",

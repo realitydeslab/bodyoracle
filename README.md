@@ -237,7 +237,7 @@ Evidence is in `Logs/ios-simulator/`, `Logs/ios-device-replay/`, and `Logs/ios-d
 
 ## Package baseline
 
-Unity's 6.3.24f1 migration updated registry dependencies to its recommended versions, including Inference Engine 2.6.1, URP 17.3.0, AR Foundation/ARKit 6.3.5, Input System 1.20.0, Burst 1.8.30, and Collections 2.6.8. Built-in packages retain their editor-defined versions. HoloKit 0.5.6 is pinned to commit `ab9560e75656bb5a27ac901983d5609da3b6eb87`. Unity Pipeline 0.7.0-exp.1 enables Unity CLI editor commands; player control is not configured.
+Unity's 6.3.24f1 migration updated registry dependencies to its recommended versions, including Inference Engine 2.6.1, URP 17.3.0, Input System 1.20.0, Burst 1.8.30, and Collections 2.6.8. Built-in packages retain their editor-defined versions. The HoloKit Unity SDK is pinned to the tag [`0.6.0-preview.1`](https://github.com/holokit/holokit-unity-sdk/releases/tag/0.6.0-preview.1) (commit `5a16342`), which requires AR Foundation/ARKit 6.4.3; Body Oracle 0.2.1 used SDK `0.5.6` (`ab9560e`). Release history is in [CHANGELOG.md](CHANGELOG.md). Unity Pipeline 0.7.0-exp.1 enables Unity CLI editor commands; player control is not configured.
 
 ## Credits and citation
 

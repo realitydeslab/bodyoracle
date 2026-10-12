@@ -297,7 +297,7 @@
       "url": "https://packages.unity.com"
     },
     "io.holokit.unity-sdk": {
-      "version": "https://github.com/holokit/holokit-unity-sdk.git#5a16342dc11f479b2aaf418a4826cf3ac7c8bd91",
+      "version": "https://github.com/holokit/holokit-unity-sdk.git#0.6.0-preview.1",
       "depth": 0,
       "source": "git",
       "dependencies": {
