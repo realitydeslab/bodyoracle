@@ -29,7 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 EXPORT = ROOT / "Builds/MacRelease"
 PROJECT = EXPORT / "MacRelease.xcodeproj"
-SCHEME = "body-oracle"
+SCHEME = "Body Oracle"  # Unity names the Mac Xcode target after PlayerSettings.productName
 ARCHIVE = ROOT / "Builds/BodyOracleMac.xcarchive"
 EXPORTED = ROOT / "Builds/MacRelease-export"
 ENTITLEMENTS = ROOT / "Tools/macos-native/BodyOracle.entitlements"
