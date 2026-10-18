@@ -10,7 +10,7 @@ This repository is the complete, open Unity app: the "Translator" of the install
 
 | | |
 | --- | --- |
-| **Current version** | **0.3.0** (iOS build 6) — [what's new](CHANGELOG.md#030) |
+| **Current version** | **0.3.0** (iOS build 7) — [what's new](CHANGELOG.md#030) |
 | **Runs on** | iPhone with iOS 17 or later, handheld or in a [HoloKit](https://holokit.io) headset · Mac with macOS 12 or later and a webcam |
 | **Model** | YOLOv8n-pose fine-tuned on 20 Body Oracle poses (ONNX), 97.3 % top-1 accuracy on held-out test images, run on the GPU by Unity Inference Engine |
 | **Built with** | Unity 6000.3.24f1 · [HoloKit Unity SDK](https://github.com/holokit/holokit-unity-sdk) 0.6.0-preview.1 · AR Foundation / ARKit 6.4.3 · Unity Inference Engine 2.6.1 |
@@ -56,7 +56,7 @@ Releases are git tags (`vX.Y.Z`) with notes on the [Releases page](https://githu
 
 | Version | Date | iOS builds | HoloKit Unity SDK | Highlights |
 | --- | --- | --- | --- | --- |
-| [0.3.0](https://github.com/realitydeslab/body-oracle/releases/tag/v0.3.0) | 2026-10-12 | 5 (TestFlight), 6 (App Store) | 0.6.0-preview.1 | Hold a pose to hear it, karaoke-style pronunciation, 3D guide grid, Stereo with the app's own buttons at 60 fps, zero-copy Mac camera, app moved into an embedded package |
+| [0.3.0](https://github.com/realitydeslab/body-oracle/releases/tag/v0.3.0) | 2026-10-12 | 5 (TestFlight), 6–7 (App Store) | 0.6.0-preview.1 | Hold a pose to hear it, karaoke-style pronunciation, 3D guide grid, Stereo with the app's own buttons at 60 fps, zero-copy Mac camera, app moved into an embedded package |
 | [0.2.1](https://github.com/realitydeslab/body-oracle/releases/tag/v0.2.1) | 2026-09-22 | 3 (TestFlight) | 0.5.6 | Pose model retrained without the mirror flip, GPU temporal stabilisation, first TestFlight build |
 
 ## Build from source
