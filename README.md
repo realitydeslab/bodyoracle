@@ -6,7 +6,7 @@ Body Oracle is an artwork about how a language of bodily gestures might change t
 
 This repository is the complete, open Unity app: the "Translator" of the installation. It is meant as a **reference for building on-device AI on HoloKit**, by hand or [with an AI coding agent](#use-it-as-a-reference-for-vibe-coding).
 
-[Project & video](https://reality.design/project/body-oracle) · [Papers](#art-and-research) · [Releases](https://github.com/realitydeslab/bodyoracle/releases) · [Changelog](CHANGELOG.md) · [HoloKit Unity SDK](https://github.com/holokit/holokit-unity-sdk)
+[Project & video](https://reality.design/project/body-oracle) · [Papers](#art-and-research) · [Releases](https://github.com/realitydeslab/body-oracle/releases) · [Changelog](CHANGELOG.md) · [HoloKit Unity SDK](https://github.com/holokit/holokit-unity-sdk)
 
 | | |
 | --- | --- |
@@ -52,12 +52,12 @@ If camera access was denied, enable it for Body Oracle (or the Unity Editor) in 
 
 ## Versions
 
-Releases are git tags (`vX.Y.Z`) with notes on the [Releases page](https://github.com/realitydeslab/bodyoracle/releases); [CHANGELOG.md](CHANGELOG.md) lists every change. The version number (`bundleVersion`) follows semantic versioning. The iOS build number only ever increases, across versions, because App Store Connect requires a new one for every upload.
+Releases are git tags (`vX.Y.Z`) with notes on the [Releases page](https://github.com/realitydeslab/body-oracle/releases); [CHANGELOG.md](CHANGELOG.md) lists every change. The version number (`bundleVersion`) follows semantic versioning. The iOS build number only ever increases, across versions, because App Store Connect requires a new one for every upload.
 
 | Version | Date | iOS builds | HoloKit Unity SDK | Highlights |
 | --- | --- | --- | --- | --- |
-| [0.3.0](https://github.com/realitydeslab/bodyoracle/releases/tag/v0.3.0) | 2026-10-12 | 5 (TestFlight), 6 (App Store) | 0.6.0-preview.1 | Hold a pose to hear it, karaoke-style pronunciation, 3D guide grid, Stereo with the app's own buttons at 60 fps, zero-copy Mac camera, app moved into an embedded package |
-| [0.2.1](https://github.com/realitydeslab/bodyoracle/releases/tag/v0.2.1) | 2026-09-22 | 3 (TestFlight) | 0.5.6 | Pose model retrained without the mirror flip, GPU temporal stabilisation, first TestFlight build |
+| [0.3.0](https://github.com/realitydeslab/body-oracle/releases/tag/v0.3.0) | 2026-10-12 | 5 (TestFlight), 6 (App Store) | 0.6.0-preview.1 | Hold a pose to hear it, karaoke-style pronunciation, 3D guide grid, Stereo with the app's own buttons at 60 fps, zero-copy Mac camera, app moved into an embedded package |
+| [0.2.1](https://github.com/realitydeslab/body-oracle/releases/tag/v0.2.1) | 2026-09-22 | 3 (TestFlight) | 0.5.6 | Pose model retrained without the mirror flip, GPU temporal stabilisation, first TestFlight build |
 
 ## Build from source
 
@@ -72,7 +72,7 @@ Package versions are pinned in [Packages/manifest.json](Packages/manifest.json) 
 ### Open the project
 
 ```sh
-git clone https://github.com/realitydeslab/bodyoracle.git
+git clone https://github.com/realitydeslab/body-oracle.git
 ```
 
 In Unity Hub, add the folder as an existing project and open it with **6000.3.24f1**, or run `unity open . --editor-version 6000.3.24f1`.
@@ -223,7 +223,7 @@ This project is a good starting point when you build with an AI coding agent (Cl
 Prompts to start from:
 
 ```text
-Read the bodyoracle repository, especially Yolo.cs, GpuYoloPostprocessor.cs and
+Read the body-oracle repository, especially Yolo.cs, GpuYoloPostprocessor.cs and
 YoloPostprocess.compute. Then add a YOLO object-detection model to my HoloKit app the same way:
 GPU preprocessing, Unity Inference Engine on the GPU, and GPU postprocessing.
 
